@@ -214,13 +214,18 @@ def convert_chunks(u, data_address, tf):
                 # Record the starting addresses of each file.
                 files.append(address)
             
-            if this == 0 or flags & 0x80:
+            last = flags & 0x80
+            
+            if this == 0 or last:
                 # The next block follows the normal header and block data.
                 address += len(data)
             else:
                 # The next block follows the continuation marker, raw block data
                 # and the block checksum.
                 address += len(block) + 3
+            
+            if last:
+                print repr(name), "has length", address - files[-1]
     
     # Record the address of the byte after the last file.
     files.append(address)
