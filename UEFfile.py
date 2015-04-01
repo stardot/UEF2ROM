@@ -3,7 +3,7 @@
 """
 UEFfile.py - Handle UEF archives.
 
-Copyright (c) 2001-2013, David Boddie <david@boddie.org.uk>
+Copyright (c) 2001-2015, David Boddie <david@boddie.org.uk>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
