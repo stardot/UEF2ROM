@@ -1,0 +1,208 @@
+.org $8000
+.alias current_rom_id_address $f4
+.alias set_current_rom_address $f5
+.alias rom_pointer $f6
+.alias OSRDRM $ffb9
+
+.alias BYTEV $020a
+.alias old_bytev $0a00
+.alias workspace $0a02
+
+rom_start:
+.byte 0, 0, 0   ; null language entry
+jmp service_entry
+
+; ROM type
+.byte $82       ; 6502 code (2), language ($40), service ($80)
+
+copyright_offset:
+.byte [copyright_string - rom_start - 1]
+
+; Version
+.byte %(version)i
+
+; Title string
+.byte "%(title)s", 0
+
+; Version string
+.byte "%(version string)s", 0
+
+copyright_string:
+.byte "%(copyright)s", 0
+
+.byte 0
+
+service_entry:
+
+    cmp #4
+    beq service_command
+    cmp #$0d
+    beq init_command
+    cmp #$0e
+    beq read_byte_command
+
+    service_entry_exit:
+    rts
+
+commands:
+.byte <rom_name, >rom_name
+
+rom_name: .byte "MGCROM", 13
+
+routines:
+.byte <rom_command, >rom_command
+
+init_command:
+
+    pha
+    jsr invert_rom_number
+    cmp current_rom_id_address
+    bcc exit
+
+    lda #<data
+    sta rom_pointer
+    lda #>data
+    sta [rom_pointer + 1]
+
+    lda current_rom_id_address
+    jsr invert_rom_number
+    sta set_current_rom_address
+
+claim:
+    pla
+    lda #0
+    rts
+
+exit:
+    pla
+    rts
+
+read_byte_command:
+    pha
+    tya
+    bmi os120
+
+    jsr invert_rom_number
+    cmp current_rom_id_address
+    bne exit
+    ldy #0
+    lda (rom_pointer),y
+    tay
+
+claim1:
+    inc rom_pointer
+    bne claim
+    inc [rom_pointer + 1]
+    jmp claim
+
+os120:
+    jsr invert_rom_number
+
+    tay
+    jsr OSRDRM
+    tay
+    jmp claim1
+
+invert_rom_number:
+    lda set_current_rom_address
+    eor #$ff
+    and #$0f
+    rts
+
+service_command:
+
+    tya                         ; push Y and X registers onto the stack
+    pha
+    txa
+    pha
+
+    clc
+    tya         ; Store the address of the command line in an new address that
+    adc $f2     ; can used zero-based post-indexed addressing.
+    sta $a8
+    lda $f3
+    adc #0
+    sta $a9
+    clc
+
+    ldx #0
+    service_command_loop:
+
+        lda commands,x
+        sta $aa
+        lda [commands + 1],x
+        sta $ab
+
+        ldy #0
+
+        service_command_rom_loop:
+
+            lda ($aa),y
+            cmp ($a8),y
+            bne service_command_next
+            iny
+            cmp #13
+            bne service_command_rom_loop
+
+        txa
+        lda routines,x
+        sta $aa
+        lda [routines + 1],x
+        sta $ab
+
+        jmp ($aa)
+
+        service_command_next:
+
+        inx
+        inx
+        cpx #2
+        bne service_command_loop
+
+    service_command_not_found:
+    pla                         ; pop Y and X registers off the stack
+    tax
+    pla
+    tay
+    lda #4                      ; restore A
+    rts
+
+rom_command:
+
+    lda #141                    ; *ROM
+    jsr $fff4
+
+    ; Copy the vector handling code into the tape workspace.
+
+    ldx #0
+    rom_loop:
+        lda new_bytev,x
+        sta workspace,x
+        inx
+        cpx #[new_bytev_end - new_bytev]
+        bne rom_loop
+
+    lda BYTEV
+    sta old_bytev
+    lda [BYTEV + 1]
+    sta [old_bytev + 1]
+
+    sei
+    lda #<workspace
+    sta BYTEV
+    lda #>workspace
+    sta [BYTEV + 1]
+    cli
+
+    rts
+
+new_bytev:
+    cmp #140
+    beq no_tape
+    jmp (old_bytev)
+    no_tape:
+    sta $7400
+    rts
+new_bytev_end:
+
+data:
