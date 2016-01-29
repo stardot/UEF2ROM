@@ -285,4 +285,10 @@ if __name__ == "__main__":
     os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file))
     os.remove(temp_file)
     
+    length = os.stat(rom_file)[stat.ST_SIZE]
+    remainder = length % 16384
+    if remainder != 0:
+        data = open(rom_file, "rb").read()
+        open(rom_file, "wb").write(data + ("\x00" * (16384 - remainder))) 
+    
     sys.exit()
