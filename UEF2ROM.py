@@ -21,8 +21,8 @@ import commands, os, stat, struct, sys, tempfile
 import UEFfile
 
 # Header based on the one in 11.6 of the Acorn Electron Advanced User Guide.
-
-header_template = open("romfs-template.oph").read()
+header_template_file = "romfs-template.oph"
+minimal_header_template_file = "romfs-minimal-template.oph"
 
 def write_header(tf, details):
 
@@ -96,11 +96,12 @@ def write_block(u, name, load, exec_, data, n, flags, address):
     
     return out
 
-def convert_chunks(u, data_address, tf):
+def convert_chunks(u, indices, data_address, tf):
 
     blocks = []
     files = []
     address = data_address
+    file_number = -1
     
     for chunk in u.chunks:
     
@@ -109,11 +110,18 @@ def convert_chunks(u, data_address, tf):
         if (n == 0x100 or n == 0x102) and data and data[0] == "\x2a":
         
             name, load, exec_, block, this, flags = read_block(chunk)
-            blocks.append(chunk)
+            
+            if this == 0:
+                file_number += 1
+                
+            if indices and file_number not in indices:
+                continue
             
             if this == 0:
                 # Record the starting addresses of each file.
                 files.append(address)
+            
+            blocks.append(chunk)
             
             last = flags & 0x80
             
@@ -128,12 +136,14 @@ def convert_chunks(u, data_address, tf):
             if last:
                 length = address - files[-1]
                 end = load + length
-                print repr(name), "has length", length
+                print repr(name), "[$%x,$%x) length %i" % (load, end, length)
                 
                 if load <= workspace < end or load < workspace_end <= end:
                     print "Warning: file may overwrite ROM workspace."
-                    print "File:      [$%x,$%x)" % (load, end)
                     print "Workspace: [$%x,$%x)" % (workspace, workspace_end)
+                
+                if address > 0xc000:
+                    print "File crosses ROM end."
     
     # Record the address of the byte after the last file.
     files.append(address)
@@ -194,32 +204,53 @@ def find_option(args, label, number = 0):
     return True, values
 
 def usage():
-    sys.stderr.write("Usage: %s [-w workspace] <UEF file> <ROM file>\n" % sys.argv[0])
+    sys.stderr.write("Usage: %s [-w <workspace>] [-f <file indices>] [-m] <UEF file> <ROM file> [<ROM file>]\n" % sys.argv[0])
     sys.stderr.write(
         "The workspace is given as a hexadecimal value and specifies the address\n"
         "in memory where working data for each ROM is stored. (Defaults to a00.)\n"
+        "The file indices can be given as a comma-separated list and can include\n"
+        "hyphen-separated ranges of indices.\n"
+        "A minimal ROM image can be specified with the -m option.\n"
         )
     sys.exit(1)
 
 if __name__ == "__main__":
 
     args = sys.argv[:]
+    indices = []
     
-    w, workspace = find_option(args, "-w", 1)
-    if w:
-        try:
+    try:
+        w, workspace = find_option(args, "-w", 1)
+        if w:
             workspace = int(workspace, 16)
-        except ValueError:
-            usage()
-    else:
-        workspace = 0xa00
+        else:
+            workspace = 0xa00
+        
+        f, files = find_option(args, "-f", 1)
+        if f:
+            pieces = files.split(",")
+            for piece in pieces:
+                if "-" in piece:
+                    begin, end = piece.split("-")
+                else:
+                    begin = end = piece
+                
+                indices += range(int(begin), int(end) + 1)
+        
+        if find_option(args, "-m", 0):
+            header_template = open(minimal_header_template_file).read()
+        else:
+            header_template = open(header_template_file).read()
+    
+    except (IndexError, ValueError):
+        usage()
     
     # The size of the workspace is determined in the romfs-template.oph file
     # and includes the two byte address for the BYTEV vector, the two byte
     # ROM file address and an eight byte routine to suppress *TAPE commands.
     workspace_end = workspace + 12
     
-    if len(args) != 3:
+    if not 3 <= len(args) <= 4:
         usage()
     
     uef_file = args[1]
@@ -239,7 +270,7 @@ if __name__ == "__main__":
     write_header(tf, details)
     os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file))
     data_address = 0x8000 + os.stat(rom_file)[stat.ST_SIZE]
-    convert_chunks(u, data_address, tf)
+    convert_chunks(u, indices, data_address, tf)
     write_end_marker(tf)
     
     os.close(tf)
