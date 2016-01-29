@@ -1,12 +1,13 @@
 .org $8000
-.alias current_rom_id_address $f4
-.alias set_current_rom_address $f5
-.alias rom_pointer $f6
+.alias current_paged_rom $f4
+.alias current_rom $f5
+.alias exported_rom_pointer $f6
 .alias OSRDRM $ffb9
 
 .alias BYTEV $020a
-.alias old_bytev $0a00
-.alias workspace $0a02
+.alias old_bytev $%(bytev)x
+.alias rom_pointer $%(rom pointer)x
+.alias workspace $%(workspace)x
 
 rom_start:
 .byte 0, 0, 0   ; null language entry
@@ -55,18 +56,19 @@ routines:
 init_command:
 
     pha
+    lda current_rom
     jsr invert_rom_number
-    cmp current_rom_id_address
+    cmp current_paged_rom
     bcc exit
 
-    lda #<data
-    sta rom_pointer
-    lda #>data
-    sta [rom_pointer + 1]
+    lda rom_pointer
+    sta exported_rom_pointer
+    lda [rom_pointer + 1]
+    sta [exported_rom_pointer + 1]
 
-    lda current_rom_id_address
+    lda current_paged_rom
     jsr invert_rom_number
-    sta set_current_rom_address
+    sta current_rom
 
 claim:
     pla
@@ -82,17 +84,20 @@ read_byte_command:
     tya
     bmi os120
 
+    lda current_rom
     jsr invert_rom_number
-    cmp current_rom_id_address
+    cmp current_paged_rom
     bne exit
     ldy #0
-    lda (rom_pointer),y
+    lda (exported_rom_pointer),y
     tay
 
 claim1:
     inc rom_pointer
+    inc exported_rom_pointer
     bne claim
     inc [rom_pointer + 1]
+    inc [exported_rom_pointer + 1]
     jmp claim
 
 os120:
@@ -104,7 +109,6 @@ os120:
     jmp claim1
 
 invert_rom_number:
-    lda set_current_rom_address
     eor #$ff
     and #$0f
     rts
@@ -169,6 +173,11 @@ service_command:
 
 rom_command:
 
+    lda #<data
+    sta rom_pointer
+    lda #>data
+    sta [rom_pointer + 1]
+
     lda #141                    ; *ROM
     jsr $fff4
 
@@ -201,7 +210,6 @@ new_bytev:
     beq no_tape
     jmp (old_bytev)
     no_tape:
-    sta $7400
     rts
 new_bytev_end:
 
