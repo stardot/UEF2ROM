@@ -126,7 +126,13 @@ def convert_chunks(u, data_address, tf):
                 address += len(block) + 3
             
             if last:
-                print repr(name), "has length", address - files[-1]
+                length = address - files[-1]
+                end = load + length
+                print repr(name), "has length", length
+                
+                if load <= workspace < end or load < workspace_end <= end:
+                    print hex(load), hex(address)
+                    print "Warning: file may overwrite ROM workspace."
     
     # Record the address of the byte after the last file.
     files.append(address)
@@ -159,20 +165,73 @@ def write_end_marker(tf):
     os.write(tf, ".byte $2b\n")
 
 
+class ArgumentError(Exception):
+    pass
+
+def find_option(args, label, number = 0):
+
+    try:
+        i = args.index(label)
+    except ValueError:
+        if number == 0:
+            return False
+        else:
+            return False, None
+    
+    values = args[i + 1:i + number + 1]
+    args[:] = args[:i] + args[i + number + 1:]
+    
+    if number == 0:
+        return True
+    
+    if len(values) < number:
+        raise ArgumentError, "Not enough values for argument '%s': %s" % (label, repr(values))
+    
+    if number == 1:
+        values = values[0]
+    
+    return True, values
+
+def usage():
+    sys.stderr.write("Usage: %s [-w workspace] <UEF file> <ROM file>\n" % sys.argv[0])
+    sys.stderr.write(
+        "The workspace is given as a hexadecimal value and specifies the address\n"
+        "in memory where working data for each ROM is stored. (Defaults to a00.)\n"
+        )
+    sys.exit(1)
+
 if __name__ == "__main__":
 
-    if len(sys.argv) != 3:
-        sys.stderr.write("Usage: %s <UEF file> <ROM file>\n" % sys.argv[0])
-        sys.exit(1)
+    args = sys.argv[:]
     
-    uef_file = sys.argv[1]
-    rom_file = sys.argv[2]
+    w, workspace = find_option(args, "-w", 1)
+    if w:
+        try:
+            workspace = int(workspace, 16)
+        except ValueError:
+            usage()
+    else:
+        workspace = 0xa00
+    
+    # The size of the workspace is determined in the romfs-template.oph file
+    # and includes the two byte address for the BYTEV vector, the two byte
+    # ROM file address and an eight byte routine to suppress *TAPE commands.
+    workspace_end = workspace + 12
+    
+    if len(args) != 3:
+        usage()
+    
+    uef_file = args[1]
+    rom_file = args[2]
     tf, temp_file = tempfile.mkstemp(suffix=os.extsep+'oph')
     
     details = {"title": "Test ROM",
                "version string": "1.0",
                "version": 1,
-               "copyright": "(C) Original author"}
+               "copyright": "(C) Original author",
+               "bytev": workspace,
+               "rom pointer": workspace + 2,
+               "workspace": workspace + 4}
     
     u = UEFfile.UEFfile(uef_file)
     
