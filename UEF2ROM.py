@@ -131,8 +131,9 @@ def convert_chunks(u, data_address, tf):
                 print repr(name), "has length", length
                 
                 if load <= workspace < end or load < workspace_end <= end:
-                    print hex(load), hex(address)
                     print "Warning: file may overwrite ROM workspace."
+                    print "File:      [$%x,$%x)" % (load, end)
+                    print "Workspace: [$%x,$%x)" % (workspace, workspace_end)
     
     # Record the address of the byte after the last file.
     files.append(address)
