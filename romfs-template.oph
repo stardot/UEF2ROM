@@ -56,18 +56,22 @@ routines:
 init_command:
 
     pha
-    lda current_rom
-    jsr invert_rom_number
+    tya
+    bmi init_set_pointer
+    eor #$0f
+    cmp #$10
+    bcs exit
     cmp current_paged_rom
     bcc exit
 
+    init_set_pointer:
     lda rom_pointer
     sta exported_rom_pointer
     lda [rom_pointer + 1]
     sta [exported_rom_pointer + 1]
 
     lda current_paged_rom
-    jsr invert_rom_number
+    eor #$0f
     sta current_rom
 
 claim:
@@ -85,7 +89,7 @@ read_byte_command:
     bmi os120
 
     lda current_rom
-    jsr invert_rom_number
+    eor #$0f
     cmp current_paged_rom
     bne exit
     ldy #0
@@ -101,17 +105,12 @@ claim1:
     jmp claim
 
 os120:
-    jsr invert_rom_number
-
+    lda current_rom
+    eor #$0f
     tay
     jsr OSRDRM
     tay
     jmp claim1
-
-invert_rom_number:
-    eor #$ff
-    and #$0f
-    rts
 
 service_command:
 

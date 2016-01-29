@@ -1,0 +1,98 @@
+.org $8000
+.alias current_paged_rom $f4
+.alias current_rom $f5
+.alias exported_rom_pointer $f6
+.alias OSRDRM $ffb9
+
+rom_start:
+.byte 0, 0, 0   ; null language entry
+jmp service_entry
+
+; ROM type
+.byte $82       ; 6502 code (2), language ($40), service ($80)
+
+copyright_offset:
+.byte [copyright_string - rom_start - 1]
+
+; Version
+.byte %(version)i
+
+; Title string
+.byte "%(title)s", 0
+
+; Version string
+.byte "%(version string)s", 0
+
+copyright_string:
+.byte "%(copyright)s", 0
+
+.byte 0
+
+service_entry:
+
+    cmp #$0d
+    beq init_command
+    cmp #$0e
+    beq read_byte_command
+
+    service_entry_exit:
+    rts
+
+init_command:
+
+    pha
+    tya
+    bmi init_set_pointer
+    eor #$0f
+    cmp #$10
+    bcs exit
+    cmp current_paged_rom
+    bcc exit
+
+    init_set_pointer:
+    lda #<data
+    sta exported_rom_pointer
+    lda #>data
+    sta [exported_rom_pointer + 1]
+
+    lda current_paged_rom
+    eor #$0f
+    sta current_rom
+
+claim:
+    pla
+    lda #0
+    rts
+
+exit:
+    pla
+    rts
+
+read_byte_command:
+    pha
+    tya
+    bmi os120
+
+    lda current_rom
+    eor #$0f
+    cmp current_paged_rom
+    bne exit
+    ldy #0
+    lda (exported_rom_pointer),y
+    tay
+
+claim1:
+    inc exported_rom_pointer
+    bne claim
+    inc [exported_rom_pointer + 1]
+    jmp claim
+
+os120:
+    lda current_rom
+    eor #$0f
+    tay
+    jsr OSRDRM
+    tay
+    jmp claim1
+
+data:
