@@ -24,10 +24,6 @@ import UEFfile
 header_template_file = "romfs-template.oph"
 minimal_header_template_file = "romfs-minimal-template.oph"
 
-def write_header(tf, details):
-
-    os.write(tf, header_template % details)
-
 def format_data(data):
 
     s = ""
@@ -96,11 +92,16 @@ def write_block(u, name, load, exec_, data, n, flags, address):
     
     return out
 
-def convert_chunks(u, indices, data_address, tf):
+def convert_chunks(u, indices, data_addresses, headers, rom_files):
 
-    blocks = []
+    roms = []
     files = []
-    address = data_address
+    file_addresses = []
+    blocks = []
+    
+    r = 0
+    address = data_addresses[r]
+    
     file_number = -1
     
     for chunk in u.chunks:
@@ -109,73 +110,134 @@ def convert_chunks(u, indices, data_address, tf):
         
         if (n == 0x100 or n == 0x102) and data and data[0] == "\x2a":
         
-            name, load, exec_, block, this, flags = read_block(chunk)
+            name, load, exec_, block_data, this, flags = info = read_block(chunk)
             
             if this == 0:
                 file_number += 1
-                
+            
             if indices and file_number not in indices:
                 continue
-            
-            if this == 0:
-                # Record the starting addresses of each file.
-                files.append(address)
-            
-            blocks.append(chunk)
             
             last = flags & 0x80
             
             if this == 0 or last:
                 # The next block follows the normal header and block data.
-                address += len(data)
+                block = data
             else:
                 # The next block follows the continuation marker, raw block data
                 # and the block checksum.
-                address += len(block) + 3
+                block = "\x23" + block_data + struct.pack("<H", u.crc(block_data))
+            
+            if this == 0:
+                file_addresses.append(address)
+            
+            if address + len(block) >= 0xc000:
+            
+                # The block won't fit into the current ROM. Start a new one
+                # and add it there along with the other blocks in the file.
+                
+                roms.append((files, file_addresses))
+                
+                files = []
+                file_addresses = []
+                
+                r += 1
+                if r >= len(data_addresses):
+                    sys.stderr.write("Not enough ROM files specified.\n")
+                    sys.exit(1)
+                
+                # Update the data address from the start of the new ROM's data
+                # area, adding the lengths of the blocks that need to be
+                # transferred to the next ROM.
+                address = data_addresses[r]
+                file_addresses.append(address)
+                
+                for old_block, info in blocks:
+                    address += len(old_block)
+            
+            address += len(block)
+            blocks.append((block, info))
             
             if last:
-                length = address - files[-1]
-                load = load & 0xffff
-                end = load + length
-                print repr(name), "[$%x,$%x) length %i" % (load, end, length)
+                files.append(blocks)
+                blocks = []
                 
-                if not minimal and \
-                   (load <= workspace < end or load < workspace_end <= end):
-                    print "Warning: file may overwrite ROM workspace."
-                    print "Workspace: [$%x,$%x)" % (workspace, workspace_end)
+                end = load + (this * 256) + len(block_data)
+                if not minimal and (load <= workspace < end or \
+                                    load < workspace_end <= end):
+                    print "Warning: file %s [$%x,$%x) may overwrite ROM workspace: [$%x,$%x)" % (
+                        repr(name), load, end, workspace, workspace_end)
+    
+    if blocks:
+        files.append(blocks)
+    
+    if files:
+        # Record the address of the byte after the last file.
+        file_addresses.append(address)
+        roms.append((files, file_addresses))
+    
+    if len(roms) > len(rom_files):
+        sys.stderr.write("Not enough ROM files specified.\n")
+        sys.exit(1)
+    
+    for header, rom_file, rom in zip(headers, rom_files, roms):
+    
+        tf, temp_file = tempfile.mkstemp(suffix=os.extsep+'oph')
+        os.write(tf, header)
+        
+        files, file_addresses = rom
+        
+        # Discard the address of the first file.
+        file_addresses.pop(0)
+        print rom_file
+        
+        for blocks in files:
+        
+            for block, info in blocks:
+            
+                name, load, exec_, block_data, this, flags = info
+                last = flags & 0x80
                 
-                if address > 0xc000:
-                    print "File crosses ROM end."
-    
-    # Record the address of the byte after the last file.
-    files.append(address)
-    
-    # Discard the first file address.
-    files.pop(0)
-    
-    for chunk in blocks:
-    
-        name, load, exec_, block, this, flags = read_block(chunk)
-        last = flags & 0x80
-        if this == 0 or last:
-            os.write(tf, "; %s %i\n" % (name, this))
-            
-            if last:
-                address = files.pop(0)
-            else:
-                address = files[0]
-            
-            os.write(tf, format_data(
-                write_block(u, name, load, exec_, block, this, flags, address)))
-        else:
-            os.write(tf, "; %s %i\n" % (name, this))
-            os.write(tf, format_data("\x23"))
-            os.write(tf, format_data(block))
-            os.write(tf, format_data(struct.pack("<H", u.crc(block))))
+                if this == 0 or last:
+                    os.write(tf, "; %s %i\n" % (name, this))
+                    
+                    last = flags & 0x80
+                    
+                    if this == 0:
+                        print "", repr(name)
+                    
+                    if last:
+                        address = file_addresses.pop(0)
+                    else:
+                        address = file_addresses[0]
+                    
+                    os.write(tf, format_data(
+                        write_block(u, name, load, exec_, block_data, this, flags, address)))
+                else:
+                    os.write(tf, "; %s %i\n" % (name, this))
+                    os.write(tf, format_data(block))
+        
+        write_end_marker(tf)
+        
+        os.close(tf)
+        os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file))
+        os.remove(temp_file)
 
 def write_end_marker(tf):
 
     os.write(tf, ".byte $2b\n")
+
+def get_data_address(header_file, rom_file):
+
+    tf, temp_file = tempfile.mkstemp(suffix=os.extsep+'oph')
+    os.write(tf, header_file)
+    os.close(tf)
+    
+    os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file))
+    data_address = 0x8000 + os.stat(rom_file)[stat.ST_SIZE]
+    os.remove(temp_file)
+    
+    return data_address
 
 
 class ArgumentError(Exception):
@@ -206,13 +268,13 @@ def find_option(args, label, number = 0):
     return True, values
 
 def usage():
-    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-t] [-w <workspace>])] <UEF file> <ROM file> [<ROM file>]\n" % sys.argv[0])
+    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-t] [-w <workspace>])] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
     sys.stderr.write(
         "The file indices can be given as a comma-separated list and can include\n"
-        "hyphen-separated ranges of indices.\n"
+        "hyphen-separated ranges of indices.\n\n"
         "A minimal ROM image can be specified with the -m option.\n"
         "If a minimal ROM image is not used, the -t option can be used to specify\n"
-        "that code to override *TAPE calls should be used.\n"
+        "that code to override *TAPE calls should be used.\n\n"
         "The workspace for the ROM can be given as a hexadecimal value and specifies\n"
         "the address in memory where the persistent ROM pointer will be stored, and\n"
         "also the code and old BYTEV vector address for *TAPE interception (if used).\n"
@@ -274,8 +336,7 @@ if __name__ == "__main__":
         usage()
     
     uef_file = args[1]
-    rom_file = args[2]
-    tf, temp_file = tempfile.mkstemp(suffix=os.extsep+'oph')
+    rom_files = args[2:]
     
     details = {"title": "Test ROM",
                "version string": "1.0",
@@ -286,22 +347,25 @@ if __name__ == "__main__":
                "workspace": workspace + 4,
                "tape init": tape_init}
     
+    # Calculate the starting address of the ROM data by assembling the ROM
+    # template files.
+    minimal_header_template = open(minimal_header_template_file).read()
+    
+    data_address = get_data_address(header_template % details, rom_files[0])
+    minimal_data_address = get_data_address(minimal_header_template % details, rom_files[0])
+    
     u = UEFfile.UEFfile(uef_file)
     
-    write_header(tf, details)
-    os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file))
-    data_address = 0x8000 + os.stat(rom_file)[stat.ST_SIZE]
-    convert_chunks(u, indices, data_address, tf)
-    write_end_marker(tf)
+    convert_chunks(u, indices, [data_address, minimal_data_address],
+        [header_template % details, minimal_header_template % details], rom_files)
     
-    os.close(tf)
-    os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file))
-    os.remove(temp_file)
+    sys.exit()
+    for rom_file in rom_files:
     
-    length = os.stat(rom_file)[stat.ST_SIZE]
-    remainder = length % 16384
-    if remainder != 0:
-        data = open(rom_file, "rb").read()
-        open(rom_file, "wb").write(data + ("\x00" * (16384 - remainder))) 
+        length = os.stat(rom_file)[stat.ST_SIZE]
+        remainder = length % 16384
+        if remainder != 0:
+            data = open(rom_file, "rb").read()
+            open(rom_file, "wb").write(data + ("\x00" * (16384 - remainder))) 
     
     sys.exit()
