@@ -115,8 +115,9 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
             if this == 0:
                 file_number += 1
             
-            if indices and file_number not in indices:
-                continue
+            if indices:
+                if file_number != indices[0]:
+                    continue
             
             last = flags & 0x80
             
@@ -136,6 +137,11 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                 # The block won't fit into the current ROM. Start a new one
                 # and add it there along with the other blocks in the file.
                 
+                if split_files:
+                    files.append(blocks)
+                    file_addresses.append(address)
+                    blocks = []
+                
                 roms.append((files, file_addresses))
                 
                 files = []
@@ -152,8 +158,11 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                 address = data_addresses[r]
                 file_addresses.append(address)
                 
-                for old_block, info in blocks:
-                    address += len(old_block)
+                if split_files:
+                    block = data
+                else:
+                    for old_block, info in blocks:
+                        address += len(old_block)
             
             address += len(block)
             blocks.append((block, info))
@@ -268,7 +277,7 @@ def find_option(args, label, number = 0):
     return True, values
 
 def usage():
-    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-t] [-w <workspace>])] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
+    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-t] [-w <workspace>])] [-s] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
     sys.stderr.write(
         "The file indices can be given as a comma-separated list and can include\n"
         "hyphen-separated ranges of indices.\n\n"
@@ -278,7 +287,8 @@ def usage():
         "The workspace for the ROM can be given as a hexadecimal value and specifies\n"
         "the address in memory where the persistent ROM pointer will be stored, and\n"
         "also the code and old BYTEV vector address for *TAPE interception (if used).\n"
-        "The workspace defaults to a00."
+        "The workspace defaults to a00.\n\n"
+        "If the -s option is specified, files may be split between ROMs.\n"
         )
     sys.exit(1)
 
@@ -320,6 +330,8 @@ if __name__ == "__main__":
                 workspace = int(workspace, 16)
             else:
                 workspace = 0xa00
+        
+        split_files = find_option(args, "-s", 0)
     
     except (IndexError, ValueError):
         usage()
