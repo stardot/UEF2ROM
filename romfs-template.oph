@@ -182,14 +182,4 @@ rom_command:
 
 %(tape init)s
 
-    rts
-
-new_bytev:
-    cmp #140
-    beq no_tape
-    jmp (old_bytev)
-    no_tape:
-    rts
-new_bytev_end:
-
 data:
