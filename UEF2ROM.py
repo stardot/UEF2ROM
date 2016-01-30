@@ -249,7 +249,7 @@ if __name__ == "__main__":
         if tape_override:
             tape_init = open("tape_init.oph").read()
         else:
-            tape_init = ""
+            tape_init = "rts\n"
     
     except (IndexError, ValueError):
         usage()
@@ -270,8 +270,8 @@ if __name__ == "__main__":
                "version string": "1.0",
                "version": 1,
                "copyright": "(C) Original author",
-               "bytev": workspace,
-               "rom pointer": workspace + 2,
+               "rom pointer": workspace,
+               "bytev": workspace + 2,
                "workspace": workspace + 4,
                "tape init": tape_init}
     

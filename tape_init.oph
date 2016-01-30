@@ -19,3 +19,13 @@
     lda #>workspace
     sta [BYTEV + 1]
     cli
+
+    rts
+
+new_bytev:
+    cmp #140
+    beq no_tape
+    jmp (old_bytev)
+    no_tape:
+    rts
+new_bytev_end:
