@@ -45,13 +45,7 @@ service_entry:
     service_entry_exit:
     rts
 
-commands:
-.byte <rom_name, >rom_name
-
 rom_name: .byte "MGCROM", 13
-
-routines:
-.byte <rom_command, >rom_command
 
 init_command:
 
@@ -119,48 +113,19 @@ service_command:
     txa
     pha
 
-    clc
-    tya         ; Store the address of the command line in an new address that
-    adc $f2     ; can used zero-based post-indexed addressing.
-    sta $a8
-    lda $f3
-    adc #0
-    sta $a9
-    clc
-
     ldx #0
-    service_command_loop:
 
-        lda commands,x
-        sta $aa
-        lda [commands + 1],x
-        sta $ab
+    service_command_rom_loop:
 
-        ldy #0
-
-        service_command_rom_loop:
-
-            lda ($aa),y
-            cmp ($a8),y
-            bne service_command_next
-            iny
-            cmp #13
-            bne service_command_rom_loop
-
-        txa
-        lda routines,x
-        sta $aa
-        lda [routines + 1],x
-        sta $ab
-
-        jmp ($aa)
-
-        service_command_next:
-
+        lda ($f2),y
+        cmp rom_name,x
+        bne service_command_not_found
+        iny
         inx
-        inx
-        cpx #2
-        bne service_command_loop
+        cmp #13
+        bne service_command_rom_loop
+
+    jmp rom_command
 
     service_command_not_found:
     pla                         ; pop Y and X registers off the stack
