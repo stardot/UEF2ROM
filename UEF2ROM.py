@@ -135,10 +135,12 @@ def convert_chunks(u, indices, data_address, tf):
             
             if last:
                 length = address - files[-1]
+                load = load & 0xffff
                 end = load + length
                 print repr(name), "[$%x,$%x) length %i" % (load, end, length)
                 
-                if load <= workspace < end or load < workspace_end <= end:
+                if not minimal and \
+                   (load <= workspace < end or load < workspace_end <= end):
                     print "Warning: file may overwrite ROM workspace."
                     print "Workspace: [$%x,$%x)" % (workspace, workspace_end)
                 
@@ -237,10 +239,17 @@ if __name__ == "__main__":
                 
                 indices += range(int(begin), int(end) + 1)
         
-        if find_option(args, "-m", 0):
+        minimal = find_option(args, "-m", 0)
+        if minimal:
             header_template = open(minimal_header_template_file).read()
         else:
             header_template = open(header_template_file).read()
+        
+        tape_override = find_option(args, "-t", 0)
+        if tape_override:
+            tape_init = open("tape_init.oph").read()
+        else:
+            tape_init = ""
     
     except (IndexError, ValueError):
         usage()
@@ -263,7 +272,8 @@ if __name__ == "__main__":
                "copyright": "(C) Original author",
                "bytev": workspace,
                "rom pointer": workspace + 2,
-               "workspace": workspace + 4}
+               "workspace": workspace + 4,
+               "tape init": tape_init}
     
     u = UEFfile.UEFfile(uef_file)
     
