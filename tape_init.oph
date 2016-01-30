@@ -20,6 +20,9 @@
     sta [BYTEV + 1]
     cli
 
+    pla
+    pla
+    lda #0
     rts
 
 new_bytev:

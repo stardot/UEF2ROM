@@ -206,13 +206,17 @@ def find_option(args, label, number = 0):
     return True, values
 
 def usage():
-    sys.stderr.write("Usage: %s [-w <workspace>] [-f <file indices>] [-m] <UEF file> <ROM file> [<ROM file>]\n" % sys.argv[0])
+    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-t] [-w <workspace>])] <UEF file> <ROM file> [<ROM file>]\n" % sys.argv[0])
     sys.stderr.write(
-        "The workspace is given as a hexadecimal value and specifies the address\n"
-        "in memory where working data for each ROM is stored. (Defaults to a00.)\n"
         "The file indices can be given as a comma-separated list and can include\n"
         "hyphen-separated ranges of indices.\n"
         "A minimal ROM image can be specified with the -m option.\n"
+        "If a minimal ROM image is not used, the -t option can be used to specify\n"
+        "that code to override *TAPE calls should be used.\n"
+        "The workspace for the ROM can be given as a hexadecimal value and specifies\n"
+        "the address in memory where the persistent ROM pointer will be stored, and\n"
+        "also the code and old BYTEV vector address for *TAPE interception (if used).\n"
+        "The workspace defaults to a00."
         )
     sys.exit(1)
 
@@ -221,13 +225,12 @@ if __name__ == "__main__":
     args = sys.argv[:]
     indices = []
     
+    minimal = False
+    tape_override = False
+    tape_init = "pla\npla\nlda #0\nrts\n"
+    workspace = 0xa00
+    
     try:
-        w, workspace = find_option(args, "-w", 1)
-        if w:
-            workspace = int(workspace, 16)
-        else:
-            workspace = 0xa00
-        
         f, files = find_option(args, "-f", 1)
         if f:
             pieces = files.split(",")
@@ -245,19 +248,27 @@ if __name__ == "__main__":
         else:
             header_template = open(header_template_file).read()
         
-        tape_override = find_option(args, "-t", 0)
-        if tape_override:
-            tape_init = open("tape_init.oph").read()
-        else:
-            tape_init = "rts\n"
+        if not minimal:
+            tape_override = find_option(args, "-t", 0)
+            if tape_override:
+                tape_init = open("tape_init.oph").read()
+            
+            w, workspace = find_option(args, "-w", 1)
+            if w:
+                workspace = int(workspace, 16)
+            else:
+                workspace = 0xa00
     
     except (IndexError, ValueError):
         usage()
     
     # The size of the workspace is determined in the romfs-template.oph file
-    # and includes the two byte address for the BYTEV vector, the two byte
-    # ROM file address and an eight byte routine to suppress *TAPE commands.
-    workspace_end = workspace + 12
+    # and includes the two byte address for the BYTEV vector and an eight byte
+    # routine to suppress *TAPE commands.
+    workspace_end = workspace + 2
+    
+    if tape_override:
+        workspace_end += 10
     
     if not 3 <= len(args) <= 4:
         usage()
