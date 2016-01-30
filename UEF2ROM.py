@@ -94,15 +94,8 @@ def write_block(u, name, load, exec_, data, n, flags, address):
 
 def convert_chunks(u, indices, data_addresses, headers, rom_files):
 
-    roms = []
-    files = []
-    file_addresses = []
-    blocks = []
-    
-    r = 0
-    address = data_addresses[r]
-    
-    file_number = -1
+    uef_files = []
+    chunks = []
     
     for chunk in u.chunks:
     
@@ -111,71 +104,91 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
         if (n == 0x100 or n == 0x102) and data and data[0] == "\x2a":
         
             name, load, exec_, block_data, this, flags = info = read_block(chunk)
-            
-            if this == 0:
-                file_number += 1
-            
-            if indices:
-                if file_number != indices[0]:
-                    continue
+            chunks.append(chunk)
             
             last = flags & 0x80
+            if last:
+                uef_files.append(chunks)
+                chunks = []
+    
+    roms = []
+    files = []
+    file_addresses = []
+    blocks = []
+    
+    r = 0
+    address = data_addresses[r]
+    
+    if not indices:
+        indices = range(len(uef_files))
+    
+    for index in indices:
+    
+        for chunk in uef_files[index]:
+        
+            n, data = chunk
             
-            if this == 0 or last:
-                # The next block follows the normal header and block data.
-                block = data
-            else:
-                # The next block follows the continuation marker, raw block data
-                # and the block checksum.
-                block = "\x23" + block_data + struct.pack("<H", u.crc(block_data))
+            if (n == 0x100 or n == 0x102) and data and data[0] == "\x2a":
             
-            if this == 0:
-                file_addresses.append(address)
-            
-            if address + len(block) >= 0xc000:
-            
-                # The block won't fit into the current ROM. Start a new one
-                # and add it there along with the other blocks in the file.
+                name, load, exec_, block_data, this, flags = info = read_block(chunk)
                 
-                if split_files:
-                    files.append(blocks)
-                    file_addresses.append(address)
-                    blocks = []
+                last = flags & 0x80
                 
-                roms.append((files, file_addresses))
-                
-                files = []
-                file_addresses = []
-                
-                r += 1
-                if r >= len(data_addresses):
-                    sys.stderr.write("Not enough ROM files specified.\n")
-                    sys.exit(1)
-                
-                # Update the data address from the start of the new ROM's data
-                # area, adding the lengths of the blocks that need to be
-                # transferred to the next ROM.
-                address = data_addresses[r]
-                file_addresses.append(address)
-                
-                if split_files:
+                if this == 0 or last:
+                    # The next block follows the normal header and block data.
                     block = data
                 else:
-                    for old_block, info in blocks:
-                        address += len(old_block)
-            
-            address += len(block)
-            blocks.append((block, info))
-            
-            if last:
-                files.append(blocks)
-                blocks = []
+                    # The next block follows the continuation marker, raw block data
+                    # and the block checksum.
+                    block = "\x23" + block_data + struct.pack("<H", u.crc(block_data))
                 
-                end = load + (this * 256) + len(block_data)
-                if not minimal and (load <= workspace < end or \
-                                    load < workspace_end <= end):
-                    print "Warning: file %s [$%x,$%x) may overwrite ROM workspace: [$%x,$%x)" % (
-                        repr(name), load, end, workspace, workspace_end)
+                if this == 0:
+                    file_addresses.append(address)
+                
+                if address + len(block) >= 0xc000:
+                
+                    # The block won't fit into the current ROM. Start a new one
+                    # and add it there along with the other blocks in the file.
+                    
+                    if split_files:
+                        files.append(blocks)
+                        file_addresses.append(address)
+                        blocks = []
+                    
+                    roms.append((files, file_addresses))
+                    
+                    files = []
+                    file_addresses = []
+                    
+                    r += 1
+                    if r >= len(data_addresses):
+                        sys.stderr.write("Not enough ROM files specified.\n")
+                        sys.exit(1)
+                    
+                    # Update the data address from the start of the new ROM's data
+                    # area, adding the lengths of the blocks that need to be
+                    # transferred to the next ROM.
+                    address = data_addresses[r]
+                    file_addresses.append(address)
+                    
+                    if split_files:
+                        block = data
+                    else:
+                        for old_block, info in blocks:
+                            address += len(old_block)
+                
+                address += len(block)
+                blocks.append((block, info))
+                
+                if last:
+                    files.append(blocks)
+                    blocks = []
+                    
+                    end = load + (this * 256) + len(block_data)
+                    if not minimal and (load <= workspace < end or \
+                                        load < workspace_end <= end):
+                        print "Warning: file %s [$%x,$%x) may overwrite ROM workspace: [$%x,$%x)" % (
+                            repr(name), load, end, workspace, workspace_end)
     
     if blocks:
         files.append(blocks)
