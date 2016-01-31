@@ -3,6 +3,7 @@
 .alias current_rom $f5
 .alias exported_rom_pointer $f6
 .alias OSRDRM $ffb9
+.alias rom_bank $%(rom bank)x
 
 rom_start:
 .byte 0, 0, 0   ; null language entry
@@ -50,6 +51,9 @@ init_command:
     bcc exit
 
     init_set_pointer:
+    lda #2
+    sta rom_bank
+
     lda #<data
     sta exported_rom_pointer
     lda #>data
