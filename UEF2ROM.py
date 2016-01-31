@@ -229,9 +229,10 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                     
                     if last:
                         next_address = file_addresses.pop(0)
-                        #print " %s ends at $%x, next file at $%x" % (
-                        #    repr(name), address + len(block),
-                        #    next_address)
+                        if this == 0:
+                            print " %s starts at $%x and ends at $%x, next file at $%x" % (
+                                repr(name), address, address + len(block),
+                                next_address)
                     
                     elif this == 0:
                         next_address = file_addresses[0]
