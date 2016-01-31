@@ -172,8 +172,10 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                     file_addresses.append(address)
                     
                     if split_files:
+                        print "Splitting %s." % repr(name)
                         block = data
                     else:
+                        print "Moving %s to the next ROM." % repr(name)
                         for old_block, info in blocks:
                             address += len(old_block)
                 
@@ -210,9 +212,11 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
         files, file_addresses = rom
         
         # Discard the address of the first file.
-        file_addresses.pop(0)
+        address = file_addresses.pop(0)
         print rom_file
         
+        first_block = True
+            
         for blocks in files:
         
             for block, info in blocks:
@@ -220,24 +224,33 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                 name, load, exec_, block_data, this, flags = info
                 last = flags & 0x80
                 
-                if this == 0 or last:
+                if this == 0 or last or first_block:
                     os.write(tf, "; %s %i\n" % (name, this))
                     
-                    last = flags & 0x80
-                    
-                    if this == 0:
-                        print "", repr(name)
-                    
                     if last:
-                        address = file_addresses.pop(0)
-                    else:
-                        address = file_addresses[0]
+                        next_address = file_addresses.pop(0)
+                        #print " %s ends at $%x, next file at $%x" % (
+                        #    repr(name), address + len(block),
+                        #    next_address)
                     
+                    elif this == 0:
+                        next_address = file_addresses[0]
+                        print " %s starts at $%x, next file at $%x" % (
+                            repr(name), address, next_address)
+                    
+                    else:
+                        next_address = file_addresses[0]
+                        print " %s continues at $%x, next file at $%x" % (
+                            repr(name), address, next_address)
+                    
+                    first_block = False
                     os.write(tf, format_data(
-                        write_block(u, name, load, exec_, block_data, this, flags, address)))
+                        write_block(u, name, load, exec_, block_data, this, flags, next_address)))
                 else:
                     os.write(tf, "; %s %i\n" % (name, this))
                     os.write(tf, format_data(block))
+                
+                address += len(block)
         
         write_end_marker(tf)
         
@@ -384,13 +397,12 @@ if __name__ == "__main__":
     convert_chunks(u, indices, [data_address, minimal_data_address],
         [header_template % details, minimal_header_template % details], rom_files)
     
-    sys.exit()
     for rom_file in rom_files:
     
         length = os.stat(rom_file)[stat.ST_SIZE]
         remainder = length % 16384
         if remainder != 0:
             data = open(rom_file, "rb").read()
-            open(rom_file, "wb").write(data + ("\x00" * (16384 - remainder))) 
+            open(rom_file, "wb").write(data + ("\xff" * (16384 - remainder))) 
     
     sys.exit()
