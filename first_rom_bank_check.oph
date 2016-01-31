@@ -1,0 +1,4 @@
+; First ROM bank check code.
+lda rom_bank
+cmp #1
+beq sync_pointers

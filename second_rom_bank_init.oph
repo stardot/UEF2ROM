@@ -1,0 +1,3 @@
+; Second ROM bank initialisation code.
+lda #2                  ; We could check for 1 here and initialise a
+sta rom_bank            ; persistent pointer.

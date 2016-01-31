@@ -187,7 +187,8 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                     blocks = []
                     
                     end = load + (this * 256) + len(block_data)
-                    if load <= workspace < end or load < workspace_end <= end:
+                    if workspace != workspace_end and \
+                        (load <= workspace < end or load < workspace_end <= end):
                         print "Warning: file %s [$%x,$%x) may overwrite ROM workspace: [$%x,$%x)" % (
                             repr(name), load, end, workspace, workspace_end)
     
@@ -325,8 +326,16 @@ if __name__ == "__main__":
     
     minimal = False
     tape_override = False
-    tape_init = "pla\npla\nlda #0\nrts\n"
     workspace = 0xa00
+    
+    details = {"title": "Test ROM",
+               "version string": "1.0",
+               "version": 1,
+               "copyright": "(C) Original author",
+               "tape init": "pla\npla\nlda #0\nrts\n",
+               "first rom bank init code": "",
+               "first rom bank check code": "",
+               "second rom bank init code": ""}
     
     try:
         f, files = find_option(args, "-f", 1)
@@ -348,8 +357,6 @@ if __name__ == "__main__":
         
         if not minimal:
             tape_override = find_option(args, "-t", 0)
-            if tape_override:
-                tape_init = open("tape_init.oph").read()
             
             w, workspace = find_option(args, "-w", 1)
             if w:
@@ -362,36 +369,52 @@ if __name__ == "__main__":
     except (IndexError, ValueError):
         usage()
     
-    # The size of the workspace is determined in the romfs-template.oph file
-    # and includes the two byte address for the BYTEV vector and an eight byte
-    # routine to suppress *TAPE commands.
-    workspace_end = workspace + 3
-    
-    if tape_override:
-        workspace_end += 10
-    
     if not 3 <= len(args) <= 4:
         usage()
     
     uef_file = args[1]
     rom_files = args[2:]
     
-    details = {"title": "Test ROM",
-               "version string": "1.0",
-               "version": 1,
-               "copyright": "(C) Original author",
-               "rom pointer": workspace,
-               "rom bank": workspace + 2,
-               "bytev": workspace + 3,
-               "workspace": workspace + 5,
-               "tape init": tape_init}
+    # The size of the workspace is determined in the romfs-template.oph file
+    # and includes the two byte address for the BYTEV vector and an eight byte
+    # routine to suppress *TAPE commands.
+    workspace_end = workspace
+    
+    details["rom pointer"] = workspace
+    
+    if minimal:
+        # Both ROM files are minimal. Do not use workspace for a persistent ROM
+        # pointer or bank number.
+        details["rom bank"] = workspace_end
+    else:
+        # For non-minimal single ROMs we use two bytes for the persistent ROM
+        # pointer.
+        workspace_end += 2
+        details["rom bank"] = workspace_end
+        
+        if len(rom_files) > 1:
+            # For two ROMs we use an additional byte for the bank number.
+            workspace_end += 1
+            
+            details["first rom bank init code"] = open("first_rom_bank_init.oph").read()
+            details["first rom bank check code"] = open("first_rom_bank_check.oph").read()
+            details["second rom bank init code"] = open("second_rom_bank_init.oph").read()
+    
+    # Add entries for tape interception, even if they are unused.
+    details["bytev"] = workspace_end
+    details["tape workspace"] = workspace_end + 2
+    
+    if tape_override:
+        details["tape init"] = open("tape_init.oph").read()
+        workspace_end += 10
     
     # Calculate the starting address of the ROM data by assembling the ROM
     # template files.
     minimal_header_template = open(minimal_header_template_file).read()
     
     data_address = get_data_address(header_template % details, rom_files[0])
-    minimal_data_address = get_data_address(minimal_header_template % details, rom_files[0])
+    minimal_data_address = get_data_address(minimal_header_template % details,
+        rom_files[0])
     
     u = UEFfile.UEFfile(uef_file)
     
