@@ -8,7 +8,7 @@
 .alias rom_pointer $%(rom pointer)x
 .alias rom_bank $%(rom bank)x
 .alias old_bytev $%(bytev)x
-.alias workspace $%(workspace)x
+.alias tape_workspace $%(tape workspace)x
 
 rom_start:
 .byte 0, 0, 0   ; null language entry
@@ -60,9 +60,7 @@ init_command:
     bcc exit
 
     init_set_pointer:
-    lda rom_bank
-    cmp #1
-    beq sync_pointers
+%(first rom bank check code)s
     
     ;jsr reset_pointer  ; Do this if we want to start at the beginning again.
     bne exit            ; Do this if we want to continue reading the second ROM.
@@ -162,8 +160,7 @@ rom_command:
 
 reset_pointer:
 
-    lda #1
-    sta rom_bank
+%(first rom bank init code)s
 
     lda #<data
     sta rom_pointer

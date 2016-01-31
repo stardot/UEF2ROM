@@ -1,0 +1,3 @@
+; First ROM bank initialisation code.
+lda #1
+sta rom_bank

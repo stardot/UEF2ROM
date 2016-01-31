@@ -51,8 +51,7 @@ init_command:
     bcc exit
 
     init_set_pointer:
-    lda #2                  ; We could check for 1 here and initialise a
-    sta rom_bank            ; persistent pointer.
+%(second rom bank init code)s
 
     lda #<data
     sta exported_rom_pointer
