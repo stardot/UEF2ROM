@@ -187,8 +187,7 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                     blocks = []
                     
                     end = load + (this * 256) + len(block_data)
-                    if not minimal and (load <= workspace < end or \
-                                        load < workspace_end <= end):
+                    if load <= workspace < end or load < workspace_end <= end:
                         print "Warning: file %s [$%x,$%x) may overwrite ROM workspace: [$%x,$%x)" % (
                             repr(name), load, end, workspace, workspace_end)
     
@@ -366,7 +365,7 @@ if __name__ == "__main__":
     # The size of the workspace is determined in the romfs-template.oph file
     # and includes the two byte address for the BYTEV vector and an eight byte
     # routine to suppress *TAPE commands.
-    workspace_end = workspace + 2
+    workspace_end = workspace + 3
     
     if tape_override:
         workspace_end += 10
@@ -382,8 +381,9 @@ if __name__ == "__main__":
                "version": 1,
                "copyright": "(C) Original author",
                "rom pointer": workspace,
-               "bytev": workspace + 2,
-               "workspace": workspace + 4,
+               "rom bank": workspace + 2,
+               "bytev": workspace + 3,
+               "workspace": workspace + 5,
                "tape init": tape_init}
     
     # Calculate the starting address of the ROM data by assembling the ROM
