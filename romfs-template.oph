@@ -64,7 +64,8 @@ init_command:
     cmp #1
     beq sync_pointers
     
-    jsr reset_pointer
+    ;jsr reset_pointer  ; Do this if we want to start at the beginning again.
+    bne exit            ; Do this if we want to continue reading the second ROM.
 
     sync_pointers:
     lda rom_pointer
