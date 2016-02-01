@@ -104,12 +104,17 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
         if (n == 0x100 or n == 0x102) and data and data[0] == "\x2a":
         
             name, load, exec_, block_data, this, flags = info = read_block(chunk)
-            chunks.append(chunk)
             
-            last = flags & 0x80
-            if last:
-                uef_files.append(chunks)
+            #last = flags & 0x80
+            if this == 0:
+                if chunks:
+                    uef_files.append(chunks)
                 chunks = []
+            
+            chunks.append(chunk)
+    
+    if chunks:
+        uef_files.append(chunks)
     
     roms = []
     files = []
@@ -124,7 +129,7 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
     
     for index in indices:
     
-        for chunk in uef_files[index]:
+        for i, chunk in enumerate(uef_files[index]):
         
             n, data = chunk
             
@@ -173,6 +178,8 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                     
                     if split_files:
                         print "Splitting %s." % repr(name)
+                        # Ensure that the first block in the new ROM has a full
+                        # header.
                         block = data
                     else:
                         print "Moving %s to the next ROM." % repr(name)
@@ -182,15 +189,14 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                 address += len(block)
                 blocks.append((block, info))
                 
-                if last:
-                    files.append(blocks)
-                    blocks = []
-                    
-                    end = load + (this * 256) + len(block_data)
-                    if workspace != workspace_end and \
-                        (load <= workspace < end or load < workspace_end <= end):
-                        print "Warning: file %s [$%x,$%x) may overwrite ROM workspace: [$%x,$%x)" % (
-                            repr(name), load, end, workspace, workspace_end)
+        files.append(blocks)
+        blocks = []
+        
+        end = load + (this * 256) + len(block_data)
+        if workspace != workspace_end and \
+            (load <= workspace < end or load < workspace_end <= end):
+            print "Warning: file %s [$%x,$%x) may overwrite ROM workspace: [$%x,$%x)" % (
+                repr(name), load, end, workspace, workspace_end)
     
     if blocks:
         files.append(blocks)
@@ -219,10 +225,10 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
             
         for blocks in files:
         
-            for block, info in blocks:
+            for b, (block, info) in enumerate(blocks):
             
                 name, load, exec_, block_data, this, flags = info
-                last = flags & 0x80
+                last = (b == len(blocks) - 1) and block[0] != "\x23"
                 
                 if this == 0 or last or first_block:
                     os.write(tf, "; %s %i\n" % (name, this))
