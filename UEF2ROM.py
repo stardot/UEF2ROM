@@ -365,7 +365,8 @@ if __name__ == "__main__":
                 workspace = 0xa00
         else:
             if find_option(args, "-t", 0):
-                print "Cannot override *TAPE in minimal ROMs."
+                sys.stderr.write("Cannot override *TAPE in minimal ROMs.\n")
+                sys.exit(1)
         
         split_files = find_option(args, "-s", 0)
     
