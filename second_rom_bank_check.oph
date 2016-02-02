@@ -1,0 +1,4 @@
+; Second ROM bank check code.
+lda rom_bank
+cmp #2
+beq init_store_rom_number

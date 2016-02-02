@@ -1,0 +1,5 @@
+; Second ROM bank pointer synchronisation code.
+lda exported_rom_pointer
+sta rom_pointer
+lda [exported_rom_pointer + 1]
+sta [rom_pointer + 1]
