@@ -29,14 +29,18 @@ boot_code = [
     "\xa2\x00",     # ldx #0    (keyboard buffer)
     "\xa0\x89",     # ldy #$89  (fn key 9)
     "\x20\xf4\xff", # jsr $fff4 (OSBYTE 8a - insert character into buffer)
-    "\xa2\x1d",     # ldx #$1d
+    "\xa2\x29",     # ldx #$1d
     "\xa0\x19",     # ldy #$19
-    "\x20\xf7\xff", # jsr $fff7 (OSCLI - *KEY9 CHAIN"<name>"|M)
-    "\xa2\x17",     # ldx #$17  
+    "\x20\xf7\xff", # jsr $fff7 (OSCLI - KEY9 <command>|M)
+    "\xa2\x24",     # ldx #$17  
+    "\xa0\x19",     # ldy #$19
+    "\x20\xf7\xff", # jsr $fff7 (OSCLI - ROM)
+    "\xa2\x1e",     # ldx #$17  
     "\xa0\x19",     # ldy #$19
     "\x4c\xf7\xff", # jmp $fff7 (OSCLI - BASIC)
-    "BASIC\r"
-    'KEY9 CHAIN"%s"|M\r',
+    "BASIC\r",
+    "*ROM\r",
+    'KEY9 %s|M\r',
     ]
 
 
@@ -119,7 +123,6 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
             name, load, exec_, block_data, this, flags = info = read_block(chunk)
             names.append(name)
             
-            #last = flags & 0x80
             if this == 0:
                 if chunks:
                     uef_files.append(chunks)
@@ -131,8 +134,15 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
         uef_files.append(chunks)
     
     # Insert a !BOOT file at the start.
-    if bootable and not star_run:
-        code = ''.join(boot_code) % names[0]
+    if bootable:
+        # Ideally, we could drop the !BOOT file if the first file should be
+        # *RUN, but it seems that we may need to select the ROM filing system
+        # again after entering BASIC.
+        if star_run:
+            code = ''.join(boot_code) % ("*/%s" % names[0])
+        else:
+            code = ''.join(boot_code) % ('CHAIN"%s"' % names[0])
+        
         uef_files.insert(0, [write_block(u, "!BOOT", 0x1900, 0x1900, code, 0, 0x80, 0)])
     
     roms = []
@@ -154,62 +164,61 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
     
         for i, chunk in enumerate(uef_files[index]):
         
-            if chunk and chunk[0] == "\x2a":
+            name, load, exec_, block_data, this, flags = info = read_block(chunk)
             
-                name, load, exec_, block_data, this, flags = info = read_block(chunk)
+            last = (i == len(uef_files[index]) - 1)
+            
+            if this == 0 or last:
+                # The next block follows the normal header and block data.
+                block = chunk
+            else:
+                # The next block follows the continuation marker, raw block data
+                # and the block checksum.
+                block = "\x23" + block_data + struct.pack("<H", u.crc(block_data))
+            
+            if this == 0:
+                file_addresses.append(address)
+            
+            if address + len(block) >= 0xc000:
+            
+                # The block won't fit into the current ROM. Start a new one
+                # and add it there along with the other blocks in the file.
+                print "Block $%x in %s won't fit in the current ROM." % (this, repr(name))
                 
-                last = flags & 0x80
+                if split_files:
+                    files.append(blocks)
+                    file_addresses.append(address)
+                    blocks = []
                 
-                if this == 0 or last:
-                    # The next block follows the normal header and block data.
+                roms.append((files, file_addresses))
+                
+                files = []
+                file_addresses = []
+                
+                r += 1
+                if r >= len(data_addresses):
+                    sys.stderr.write("Not enough ROM files specified.\n")
+                    sys.exit(1)
+                
+                # Update the data address from the start of the new ROM's data
+                # area, adding the lengths of the blocks that need to be
+                # transferred to the next ROM.
+                address = data_addresses[r]
+                file_addresses.append(address)
+                
+                if split_files:
+                    print "Splitting %s - moving block $%x to the next ROM." % (repr(name), this)
+                    # Ensure that the first block in the new ROM has a full
+                    # header.
                     block = chunk
                 else:
-                    # The next block follows the continuation marker, raw block data
-                    # and the block checksum.
-                    block = "\x23" + block_data + struct.pack("<H", u.crc(block_data))
-                
-                if this == 0:
-                    file_addresses.append(address)
-                
-                if address + len(block) >= 0xc000:
-                
-                    # The block won't fit into the current ROM. Start a new one
-                    # and add it there along with the other blocks in the file.
-                    
-                    if split_files:
-                        files.append(blocks)
-                        file_addresses.append(address)
-                        blocks = []
-                    
-                    roms.append((files, file_addresses))
-                    
-                    files = []
-                    file_addresses = []
-                    
-                    r += 1
-                    if r >= len(data_addresses):
-                        sys.stderr.write("Not enough ROM files specified.\n")
-                        sys.exit(1)
-                    
-                    # Update the data address from the start of the new ROM's data
-                    # area, adding the lengths of the blocks that need to be
-                    # transferred to the next ROM.
-                    address = data_addresses[r]
-                    file_addresses.append(address)
-                    
-                    if split_files:
-                        print "Splitting %s." % repr(name)
-                        # Ensure that the first block in the new ROM has a full
-                        # header.
-                        block = chunk
-                    else:
-                        print "Moving %s to the next ROM." % repr(name)
-                        for old_block, info in blocks:
-                            address += len(old_block)
-                
-                address += len(block)
-                blocks.append((block, info))
-                
+                    print "Moving %s to the next ROM." % repr(name)
+                    for old_block, old_info in blocks:
+                        address += len(old_block)
+            
+            address += len(block)
+            blocks.append((block, info))
+        
         files.append(blocks)
         blocks = []
         
@@ -252,7 +261,7 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                 last = (b == len(blocks) - 1) and block[0] != "\x23"
                 
                 if this == 0 or last or first_block:
-                    os.write(tf, "; %s %i\n" % (name, this))
+                    os.write(tf, "; %s %x\n" % (name, this))
                     
                     if last:
                         next_address = file_addresses.pop(0)
@@ -275,7 +284,7 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                     os.write(tf, format_data(
                         write_block(u, name, load, exec_, block_data, this, flags, next_address)))
                 else:
-                    os.write(tf, "; %s %i\n" % (name, this))
+                    os.write(tf, "; %s %x\n" % (name, this))
                     os.write(tf, format_data(block))
                 
                 address += len(block)
@@ -284,7 +293,7 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
         
         os.close(tf)
         os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file))
-        os.remove(temp_file)
+        #os.remove(temp_file)
 
 def write_end_marker(tf):
 
@@ -331,17 +340,20 @@ def find_option(args, label, number = 0):
     return True, values
 
 def usage():
-    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-t] [-w <workspace>])] [-s] [-b [-a] [-r]] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
+    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-t] [-w <workspace>] [-l])] [-s] [-b [-a] [-r]] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
     sys.stderr.write(
         "The file indices can be given as a comma-separated list and can include\n"
         "hyphen-separated ranges of indices.\n\n"
-        "A minimal ROM image can be specified with the -m option.\n"
+        "A minimal ROM image can be specified with the -m option.\n\n"
         "If a minimal ROM image is not used, the -t option can be used to specify\n"
-        "that code to override *TAPE calls should be used.\n\n"
+        "that code to override *TAPE calls should be used.\n"
         "The workspace for the ROM can be given as a hexadecimal value and specifies\n"
         "the address in memory where the persistent ROM pointer will be stored, and\n"
         "also the code and old BYTEV vector address for *TAPE interception (if used).\n"
-        "The workspace defaults to a00.\n\n"
+        "The workspace defaults to a00.\n"
+        "The -l option determines whether the first ROM will be read again after the\n"
+        "second ROM has been accessed. By default, the first ROM will not be readable\n"
+        "to ensure that files on the second ROM following a split file can be read.\n\n"
         "If the -s option is specified, files may be split between ROMs.\n\n"
         "If the -b option is specified, the first ROM will be run when selected.\n"
         "Additionally, if the -a option is given, the ROM will be made auto-bootable.\n"
@@ -365,6 +377,7 @@ if __name__ == "__main__":
          "copyright": "(C) Original author",
          "service boot code": "",
          "boot code": "",
+         "init romfs code": "",
          "call tape init": "",
          "tape init": "",
          "first rom bank init code": "",
@@ -376,6 +389,7 @@ if __name__ == "__main__":
          "copyright": "(C) Original author",
          "service boot code": "",
          "boot code": "",
+         "init romfs code": "",
          "second rom bank init code": ""},
         ]
     
@@ -405,6 +419,12 @@ if __name__ == "__main__":
                 workspace = int(workspace, 16)
             else:
                 workspace = 0xa00
+            
+            # Non-minimal ROMs always need to call *ROM explicitly.
+            details[0]["init romfs code"] = open("init_romfs.oph").read()
+            
+            loop = find_option(args, "-l", 0)
+        
         else:
             if find_option(args, "-t", 0):
                 sys.stderr.write("Cannot override *TAPE in minimal ROMs.\n")
@@ -416,8 +436,15 @@ if __name__ == "__main__":
         bootable = find_option(args, "-b", 0)
         star_run = find_option(args, "-r", 0)
         
+        if bootable and minimal and not autobootable:
+            sys.stderr.write("Bootable minimal ROMs must also be auto-bootable.\n")
+            sys.exit(1)
+        
         if autobootable:
             details[0]["service boot code"] = open("service_boot.oph").read()
+            if minimal:
+                # Minimal ROMs only need to call *ROM if they are auto-bootable.
+                details[0]["init romfs code"] = open("init_romfs.oph").read()
             bootable = True
         
         if bootable:
@@ -457,6 +484,11 @@ if __name__ == "__main__":
             
             details[0]["first rom bank init code"] = open("first_rom_bank_init.oph").read()
             details[0]["first rom bank check code"] = open("first_rom_bank_check.oph").read()
+            if loop:
+                details[0]["first rom bank behaviour code"] = "jsr reset_pointer"
+            else:
+                details[0]["first rom bank behaviour code"] = "bne exit"
+            
             details[0]["second rom bank init code"] = \
                 details[1]["second rom bank init code"] = open("second_rom_bank_init.oph").read()
     

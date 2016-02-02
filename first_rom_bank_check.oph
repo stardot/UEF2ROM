@@ -2,8 +2,10 @@
 lda rom_bank
 cmp #1
 beq init_sync_pointers
-    
-;jsr reset_pointer  ; Do this if we want to start at the beginning again.
-bne exit            ; Do this if we want to continue reading the second ROM.
 
-init_sync_pointers:
+; Call reset_pointer if we want to start at the beginning again.
+;jsr reset_pointer
+; Branch to the service non-claim exit if we want to continue reading the
+; second ROM.
+;bne exit
+

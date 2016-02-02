@@ -102,6 +102,7 @@ os120:
 
 rom_command:
 
+%(init romfs code)s
 %(boot code)s
 
 data:

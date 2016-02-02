@@ -1,8 +1,5 @@
 ; Executes the OS command to run the bootloader.
 
-lda #141                    ; *ROM
-jsr $fff4
-
 ldx #<boot_command
 ldy #>boot_command
 jmp $fff7
