@@ -264,6 +264,13 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                 name, load, exec_, block_data, this, flags = info
                 last = (b == len(blocks) - 1) and block[0] != "\x23"
                 
+                # Potential flag modifications:
+                #
+                #if flags & 0x40 and len(block_data) != 0:
+                #    flags = flags & 0xbf
+                #if flags & 0x80 and not last:
+                #    flags = flags & 0x7f
+                
                 if this == 0 or last or first_block:
                     os.write(tf, "; %s %x\n" % (name, this))
                     
@@ -344,11 +351,15 @@ def find_option(args, label, number = 0):
     return True, values
 
 def usage():
-    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-t] [-w <workspace>] [-l])] [-s] [-b [-a] [-r]] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
+    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-p] [-t] [-w <workspace>] [-l])] [-s] [-b [-a] [-r]] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
     sys.stderr.write(
         "The file indices can be given as a comma-separated list and can include\n"
         "hyphen-separated ranges of indices.\n\n"
-        "A minimal ROM image can be specified with the -m option.\n\n"
+        "The first ROM image can be specified to be a minimal ROM with the -m option.\n"
+        "Otherwise, it will contain code to use a persistent ROM pointer.\n"
+        "The second ROM image will always be minimal, but can be specified to use a\n"
+        "persistent ROM pointer if the -p option is given and the first ROM is not a\n"
+        "minimal ROM.\n\n"
         "If a minimal ROM image is not used, the -t option can be used to specify\n"
         "that code to override *TAPE calls should be used.\n"
         "The workspace for the ROM can be given as a hexadecimal value and specifies\n"
@@ -387,7 +398,9 @@ if __name__ == "__main__":
          "first rom bank init code": "",
          "first rom bank check code": "",
          "first rom bank behaviour code": "",
-         "second rom bank init code": ""},
+         "second rom bank check code": "",
+         "second rom bank init code": "",
+         "second rom bank pointer sync code": ""},
         {"title": "Test ROM",
          "version string": "1.0",
          "version": 1,
@@ -395,7 +408,9 @@ if __name__ == "__main__":
          "service boot code": "",
          "boot code": "",
          "init romfs code": "",
-         "second rom bank init code": ""},
+         "second rom bank check code": "",
+         "second rom bank init code": "",
+         "second rom bank pointer sync code": ""},
         ]
     
     try:
@@ -427,6 +442,11 @@ if __name__ == "__main__":
             
             # Non-minimal ROMs always need to call *ROM explicitly.
             details[0]["init romfs code"] = open("init_romfs.oph").read()
+            
+            # The second ROM can use a persistent ROM pointer.
+            if find_option(args, "-p", 0):
+                details[1]["second rom bank check code"] = open("second_rom_bank_check.oph").read()
+                details[1]["second rom bank pointer sync code"] = open("second_rom_bank_sync.oph").read()
             
             loop = find_option(args, "-l", 0)
         
@@ -471,7 +491,7 @@ if __name__ == "__main__":
     # routine to suppress *TAPE commands.
     workspace_end = workspace
     
-    details[0]["rom pointer"] = workspace
+    details[0]["rom pointer"] = details[1]["rom pointer"] = workspace
     
     if minimal:
         # Both ROM files are minimal. Do not use workspace for a persistent ROM
