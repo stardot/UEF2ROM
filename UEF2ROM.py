@@ -135,15 +135,19 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
     
     # Insert a !BOOT file at the start.
     if bootable:
+    
         # Ideally, we could drop the !BOOT file if the first file should be
         # *RUN, but it seems that we may need to select the ROM filing system
         # again after entering BASIC.
-        if star_run:
+        if star_run and minimal:
             code = ''.join(boot_code) % ("*/%s" % names[0])
-        else:
+        elif not star_run:
             code = ''.join(boot_code) % ('CHAIN"%s"' % names[0])
+        else:
+            code = ""
         
-        uef_files.insert(0, [write_block(u, "!BOOT", 0x1900, 0x1900, code, 0, 0x80, 0)])
+        if code:
+            uef_files.insert(0, [write_block(u, "!BOOT", 0x1900, 0x1900, code, 0, 0x80, 0)])
     
     roms = []
     files = []
@@ -293,7 +297,7 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
         
         os.close(tf)
         os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file))
-        #os.remove(temp_file)
+        os.remove(temp_file)
 
 def write_end_marker(tf):
 
@@ -382,6 +386,7 @@ if __name__ == "__main__":
          "tape init": "",
          "first rom bank init code": "",
          "first rom bank check code": "",
+         "first rom bank behaviour code": "",
          "second rom bank init code": ""},
         {"title": "Test ROM",
          "version string": "1.0",
@@ -517,6 +522,9 @@ if __name__ == "__main__":
     
     for rom_file in rom_files:
     
+        if not os.path.exists(rom_file):
+            continue
+        
         length = os.stat(rom_file)[stat.ST_SIZE]
         remainder = length % 16384
         if remainder != 0:
