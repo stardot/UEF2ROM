@@ -24,6 +24,22 @@ import UEFfile
 header_template_file = "romfs-template.oph"
 minimal_header_template_file = "romfs-minimal-template.oph"
 
+boot_code = [
+    "\xa9\x8a",     # lda #$8a
+    "\xa2\x00",     # ldx #0    (keyboard buffer)
+    "\xa0\x89",     # ldy #$89  (fn key 9)
+    "\x20\xf4\xff", # jsr $fff4 (OSBYTE 8a - insert character into buffer)
+    "\xa2\x1d",     # ldx #$1d
+    "\xa0\x19",     # ldy #$19
+    "\x20\xf7\xff", # jsr $fff7 (OSCLI - *KEY9 CHAIN"<name>"|M)
+    "\xa2\x17",     # ldx #$17  
+    "\xa0\x19",     # ldy #$19
+    "\x4c\xf7\xff", # jmp $fff7 (OSCLI - BASIC)
+    "BASIC\r"
+    'KEY9 CHAIN"%s"|M\r',
+    ]
+
+
 def format_data(data):
 
     s = ""
@@ -34,10 +50,8 @@ def format_data(data):
     
     return s
 
-def read_block(chunk):
+def read_block(block):
 
-    chunk_id, block = chunk
-    
     # Read the block
     name = ''
     a = 1
@@ -96,14 +110,14 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
 
     uef_files = []
     chunks = []
+    names = []
     
-    for chunk in u.chunks:
+    for n, chunk in u.chunks:
     
-        n, data = chunk
-        
-        if (n == 0x100 or n == 0x102) and data and data[0] == "\x2a":
+        if (n == 0x100 or n == 0x102) and chunk and chunk[0] == "\x2a":
         
             name, load, exec_, block_data, this, flags = info = read_block(chunk)
+            names.append(name)
             
             #last = flags & 0x80
             if this == 0:
@@ -116,6 +130,11 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
     if chunks:
         uef_files.append(chunks)
     
+    # Insert a !BOOT file at the start.
+    if bootable and not star_run:
+        code = ''.join(boot_code) % names[0]
+        uef_files.insert(0, [write_block(u, "!BOOT", 0x1900, 0x1900, code, 0, 0x80, 0)])
+    
     roms = []
     files = []
     file_addresses = []
@@ -126,14 +145,16 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
     
     if not indices:
         indices = range(len(uef_files))
+    elif bootable:
+        # If we inserted a !BOOT file, increment all the indices by 1 and
+        # insert the !BOOT file at the start.
+        indices = [0] + map(lambda i: i + 1, indices)
     
     for index in indices:
     
         for i, chunk in enumerate(uef_files[index]):
         
-            n, data = chunk
-            
-            if (n == 0x100 or n == 0x102) and data and data[0] == "\x2a":
+            if chunk and chunk[0] == "\x2a":
             
                 name, load, exec_, block_data, this, flags = info = read_block(chunk)
                 
@@ -141,7 +162,7 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                 
                 if this == 0 or last:
                     # The next block follows the normal header and block data.
-                    block = data
+                    block = chunk
                 else:
                     # The next block follows the continuation marker, raw block data
                     # and the block checksum.
@@ -180,7 +201,7 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                         print "Splitting %s." % repr(name)
                         # Ensure that the first block in the new ROM has a full
                         # header.
-                        block = data
+                        block = chunk
                     else:
                         print "Moving %s to the next ROM." % repr(name)
                         for old_block, info in blocks:
@@ -310,7 +331,7 @@ def find_option(args, label, number = 0):
     return True, values
 
 def usage():
-    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-t] [-w <workspace>])] [-s] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
+    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-t] [-w <workspace>])] [-s] [-b [-a] [-r]] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
     sys.stderr.write(
         "The file indices can be given as a comma-separated list and can include\n"
         "hyphen-separated ranges of indices.\n\n"
@@ -321,7 +342,10 @@ def usage():
         "the address in memory where the persistent ROM pointer will be stored, and\n"
         "also the code and old BYTEV vector address for *TAPE interception (if used).\n"
         "The workspace defaults to a00.\n\n"
-        "If the -s option is specified, files may be split between ROMs.\n"
+        "If the -s option is specified, files may be split between ROMs.\n\n"
+        "If the -b option is specified, the first ROM will be run when selected.\n"
+        "Additionally, if the -a option is given, the ROM will be made auto-bootable.\n"
+        "The -r option is used to specify that the first file must be executed with *RUN.\n\n"
         )
     sys.exit(1)
 
@@ -334,14 +358,26 @@ if __name__ == "__main__":
     tape_override = False
     workspace = 0xa00
     
-    details = {"title": "Test ROM",
-               "version string": "1.0",
-               "version": 1,
-               "copyright": "(C) Original author",
-               "tape init": "pla\npla\nlda #0\nrts\n",
-               "first rom bank init code": "",
-               "first rom bank check code": "",
-               "second rom bank init code": ""}
+    details = [
+        {"title": "Test ROM",
+         "version string": "1.0",
+         "version": 1,
+         "copyright": "(C) Original author",
+         "service boot code": "",
+         "boot code": "",
+         "call tape init": "",
+         "tape init": "",
+         "first rom bank init code": "",
+         "first rom bank check code": "",
+         "second rom bank init code": ""},
+        {"title": "Test ROM",
+         "version string": "1.0",
+         "version": 1,
+         "copyright": "(C) Original author",
+         "service boot code": "",
+         "boot code": "",
+         "second rom bank init code": ""},
+        ]
     
     try:
         f, files = find_option(args, "-f", 1)
@@ -375,6 +411,19 @@ if __name__ == "__main__":
                 sys.exit(1)
         
         split_files = find_option(args, "-s", 0)
+        
+        autobootable = find_option(args, "-a", 0)
+        bootable = find_option(args, "-b", 0)
+        star_run = find_option(args, "-r", 0)
+        
+        if autobootable:
+            details[0]["service boot code"] = open("service_boot.oph").read()
+            bootable = True
+        
+        if bootable:
+            details[0]["boot code"] = open("boot_code.oph").read()
+        else:
+            details[0]["boot code"] = "pla\npla\nlda #0\nrts"
     
     except (IndexError, ValueError):
         usage()
@@ -390,46 +439,49 @@ if __name__ == "__main__":
     # routine to suppress *TAPE commands.
     workspace_end = workspace
     
-    details["rom pointer"] = workspace
+    details[0]["rom pointer"] = workspace
     
     if minimal:
         # Both ROM files are minimal. Do not use workspace for a persistent ROM
         # pointer or bank number.
-        details["rom bank"] = workspace_end
+        details[0]["rom bank"] = details[1]["rom bank"] = workspace_end
     else:
         # For non-minimal single ROMs we use two bytes for the persistent ROM
         # pointer.
         workspace_end += 2
-        details["rom bank"] = workspace_end
+        details[0]["rom bank"] = details[1]["rom bank"] = workspace_end
         
         if len(rom_files) > 1:
             # For two ROMs we use an additional byte for the bank number.
             workspace_end += 1
             
-            details["first rom bank init code"] = open("first_rom_bank_init.oph").read()
-            details["first rom bank check code"] = open("first_rom_bank_check.oph").read()
-            details["second rom bank init code"] = open("second_rom_bank_init.oph").read()
+            details[0]["first rom bank init code"] = open("first_rom_bank_init.oph").read()
+            details[0]["first rom bank check code"] = open("first_rom_bank_check.oph").read()
+            details[0]["second rom bank init code"] = \
+                details[1]["second rom bank init code"] = open("second_rom_bank_init.oph").read()
     
     # Add entries for tape interception, even if they are unused.
-    details["bytev"] = workspace_end
-    details["tape workspace"] = workspace_end + 2
+    details[0]["bytev"] = workspace_end
+    details[0]["tape workspace"] = workspace_end + 2
     
     if tape_override:
-        details["tape init"] = open("tape_init.oph").read()
+        details[0]["tape init"] = open("tape_init.oph").read()
+        details[0]["call tape init"] = "    jsr tape_init"
         workspace_end += 10
     
     # Calculate the starting address of the ROM data by assembling the ROM
     # template files.
     minimal_header_template = open(minimal_header_template_file).read()
     
-    data_address = get_data_address(header_template % details, rom_files[0])
-    minimal_data_address = get_data_address(minimal_header_template % details,
+    data_address = get_data_address(header_template % details[0], rom_files[0])
+    minimal_data_address = get_data_address(minimal_header_template % details[1],
         rom_files[0])
     
     u = UEFfile.UEFfile(uef_file)
     
     convert_chunks(u, indices, [data_address, minimal_data_address],
-        [header_template % details, minimal_header_template % details], rom_files)
+        [header_template % details[0], minimal_header_template % details[1]],
+        rom_files)
     
     for rom_file in rom_files:
     
