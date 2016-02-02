@@ -15,7 +15,7 @@ rom_start:
 jmp service_entry
 
 ; ROM type
-.byte $c2       ; 6502 code (2), language ($40), service ($80)
+.byte $82       ; 6502 code (2), language ($40), service ($80)
 
 copyright_offset:
 .byte [copyright_string - rom_start - 1]
@@ -42,9 +42,7 @@ service_entry:
     beq init_command
     cmp #$0e
     beq read_byte_command
-
 %(service boot code)s
-
     service_entry_exit:
     rts
 
@@ -63,7 +61,9 @@ init_command:
 
     init_set_pointer:
 %(first rom bank check code)s
+%(first rom bank behaviour code)s
 
+init_sync_pointers:
     jsr sync_pointers
 
     lda current_paged_rom
@@ -148,6 +148,7 @@ rom_command:
 
     jsr reset_pointer
 
+%(init romfs code)s
 %(call tape init)s
 
     jsr sync_pointers
