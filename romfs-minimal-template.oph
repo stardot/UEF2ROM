@@ -36,6 +36,8 @@ service_entry:
     cmp #$0e
     beq read_byte_command
 
+%(service boot code)s
+
     service_entry_exit:
     rts
 
@@ -97,5 +99,9 @@ os120:
     jsr OSRDRM
     tay
     jmp claim1
+
+rom_command:
+
+%(boot code)s
 
 data:

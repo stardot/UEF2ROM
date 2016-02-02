@@ -1,7 +1,9 @@
 ; First ROM bank check code.
 lda rom_bank
 cmp #1
-beq sync_pointers
+beq init_sync_pointers
     
 ;jsr reset_pointer  ; Do this if we want to start at the beginning again.
 bne exit            ; Do this if we want to continue reading the second ROM.
+
+init_sync_pointers:

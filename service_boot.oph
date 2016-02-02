@@ -1,0 +1,3 @@
+; Handles the boot service call.
+cmp #3
+beq rom_command
