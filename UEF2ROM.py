@@ -139,12 +139,10 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
         # Ideally, we could drop the !BOOT file if the first file should be
         # *RUN, but it seems that we may need to select the ROM filing system
         # again after entering BASIC.
-        if star_run and minimal:
+        if star_run:
             code = ''.join(boot_code) % ("*/%s" % names[0])
-        elif not star_run:
-            code = ''.join(boot_code) % ('CHAIN"%s"' % names[0])
         else:
-            code = ""
+            code = ''.join(boot_code) % ('CHAIN"%s"' % names[0])
         
         if code:
             uef_files.insert(0, [write_block(u, "!BOOT", 0x1900, 0x1900, code, 0, 0x80, 0)])
