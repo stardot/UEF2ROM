@@ -36,8 +36,7 @@ copyright_string:
 
 service_entry:
 
-    cmp #4
-    beq service_command
+%(service entry command code)s
     cmp #$0d
     beq init_command
     cmp #$0e
@@ -116,33 +115,7 @@ os120:
     jmp claim1
 
 service_command:
-
-    tya                         ; push Y and X registers onto the stack
-    pha
-    txa
-    pha
-
-    ldx #0
-
-    service_command_rom_loop:
-
-        lda ($f2),y
-        cmp rom_name,x
-        bne service_command_not_found
-        iny
-        inx
-        cmp #13
-        bne service_command_rom_loop
-
-    jmp rom_command
-
-    service_command_not_found:
-    pla                         ; pop Y and X registers off the stack
-    tax
-    pla
-    tay
-    lda #4                      ; restore A
-    rts
+%(service command code)s
 
 rom_command:
 

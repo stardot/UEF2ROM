@@ -1,0 +1,3 @@
+; Code to call a check for the ROM's star command.
+cmp #4
+beq service_command

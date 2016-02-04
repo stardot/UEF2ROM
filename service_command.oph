@@ -1,0 +1,28 @@
+; Code to check for the ROM's name being used as a star command.
+
+    tya                         ; push Y and X registers onto the stack
+    pha
+    txa
+    pha
+
+    ldx #0
+
+    service_command_rom_loop:
+
+        lda ($f2),y
+        cmp rom_name,x
+        bne service_command_not_found
+        iny
+        inx
+        cmp #13
+        bne service_command_rom_loop
+
+    jmp rom_command
+
+    service_command_not_found:
+    pla                         ; pop Y and X registers off the stack
+    tax
+    pla
+    tay
+    lda #4                      ; restore A
+    rts
