@@ -20,7 +20,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import commands, os, stat, struct, sys, tempfile
 import UEFfile
 
-# Header based on the one in 11.6 of the Acorn Electron Advanced User Guide.
 header_template_file = "romfs-template.oph"
 minimal_header_template_file = "romfs-minimal-template.oph"
 
@@ -388,6 +387,8 @@ if __name__ == "__main__":
          "version string": "1.0",
          "version": 1,
          "copyright": "(C) Original author",
+         "service entry command code": "",
+         "service command code": "",
          "service boot code": "",
          "boot code": "",
          "init romfs code": "",
@@ -459,16 +460,22 @@ if __name__ == "__main__":
         bootable = find_option(args, "-b", 0)
         star_run = find_option(args, "-r", 0)
         
-        if bootable and minimal and not autobootable:
-            sys.stderr.write("Bootable minimal ROMs must also be auto-bootable.\n")
-            sys.exit(1)
-        
         if autobootable:
             details[0]["service boot code"] = open("service_boot.oph").read()
             if minimal:
                 # Minimal ROMs only need to call *ROM if they are auto-bootable.
                 details[0]["init romfs code"] = open("init_romfs.oph").read()
             bootable = True
+        else:
+            if minimal:
+                if bootable:
+                    sys.stderr.write("Bootable minimal ROMs must also be auto-bootable.\n")
+                    sys.exit(1)
+            else:
+                # Not auto-bootable or minimal, so include code to allow
+                # the ROM to be initialised.
+                details[0]["service entry command code"] = open("service_entry_command.oph").read()
+                details[0]["service command code"] = open("service_command.oph").read()
         
         if bootable:
             details[0]["boot code"] = open("boot_code.oph").read()
@@ -478,11 +485,18 @@ if __name__ == "__main__":
     except (IndexError, ValueError):
         usage()
     
+    # Check that we have suitable input and output files.
     if not 3 <= len(args) <= 4:
         usage()
     
     uef_file = args[1]
     rom_files = args[2:]
+    
+    # Create directories as required.
+    for rom_file in rom_files:
+        dir_name, file_name = os.path.split(rom_file)
+        if not os.path.exists(dir_name):
+            os.mkdir(dir_name)
     
     # The size of the workspace is determined in the romfs-template.oph file
     # and includes the two byte address for the BYTEV vector and an eight byte
