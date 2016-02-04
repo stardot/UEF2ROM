@@ -495,7 +495,7 @@ if __name__ == "__main__":
     # Create directories as required.
     for rom_file in rom_files:
         dir_name, file_name = os.path.split(rom_file)
-        if not os.path.exists(dir_name):
+        if dir_name and not os.path.exists(dir_name):
             os.mkdir(dir_name)
     
     # The size of the workspace is determined in the romfs-template.oph file
