@@ -120,9 +120,9 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
         if (n == 0x100 or n == 0x102) and chunk and chunk[0] == "\x2a":
         
             name, load, exec_, block_data, this, flags = info = read_block(chunk)
-            names.append(name)
             
             if this == 0:
+                names.append(name)
                 if chunks:
                     uef_files.append(chunks)
                 chunks = []
@@ -132,6 +132,10 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
     if chunks:
         uef_files.append(chunks)
     
+    # If file indices were not specified, obtain the indices of all files.
+    if not indices:
+        indices = range(len(uef_files))
+    
     # Insert a !BOOT file at the start.
     if bootable:
     
@@ -139,12 +143,16 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
         # *RUN, but it seems that we may need to select the ROM filing system
         # again after entering BASIC.
         if star_run:
-            code = ''.join(boot_code) % ("*/%s" % names[0])
+            code = ''.join(boot_code) % ("*/%s" % names[indices[0]])
         else:
-            code = ''.join(boot_code) % ('CHAIN"%s"' % names[0])
+            code = ''.join(boot_code) % ('CHAIN"%s"' % names[indices[0]])
         
         if code:
             uef_files.insert(0, [write_block(u, "!BOOT", 0x1900, 0x1900, code, 0, 0x80, 0)])
+            
+            # If we inserted a !BOOT file, increment all the indices by 1 and
+            # insert the !BOOT file at the start.
+            indices = [0] + map(lambda i: i + 1, indices)
     
     roms = []
     files = []
@@ -153,13 +161,6 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
     
     r = 0
     address = data_addresses[r]
-    
-    if not indices:
-        indices = range(len(uef_files))
-    elif bootable:
-        # If we inserted a !BOOT file, increment all the indices by 1 and
-        # insert the !BOOT file at the start.
-        indices = [0] + map(lambda i: i + 1, indices)
     
     for index in indices:
     
