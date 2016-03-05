@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import commands, os, stat, struct, sys, tempfile
-import UEFfile
+from tools import UEFfile
 
 header_template_file = "romfs-template.oph"
 minimal_header_template_file = "romfs-minimal-template.oph"
