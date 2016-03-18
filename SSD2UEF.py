@@ -27,16 +27,32 @@ from tools import makedfs, UEFfile
 
 if __name__ == "__main__":
 
-    if len(sys.argv) != 3:
-        sys.stderr.write("Usage: %s <ssd file> <uef file>\n" % sys.argv[0])
+    if not 3 <= len(sys.argv) <= 4:
+        sys.stderr.write("Usage: %s <ssd file> <uef file> [file0,...]\n" % sys.argv[0])
         sys.exit(1)
     
     cat = makedfs.Catalogue(open(sys.argv[1]))
     title, disk_files = cat.read()
     
-    files = []
+    if len(sys.argv) == 4:
+        names = sys.argv[3].split(",")
+    else:
+        names = []
+        for file in disk_files:
+            names.append(file.name)
+    
+    index = {}
     for file in disk_files:
-        name = file.name
+        index[file.name] = file
+    
+    files = []
+    for name in names:
+        try:
+            file = index[name]
+        except KeyError:
+            sys.stderr.write("File '%s' not found in the disk catalogue.\n" % name)
+            sys.exit(1)
+        
         if "." in name:
             name = name.split(".")[-1]
         info = (name, file.load_address, file.execution_address, file.data)
