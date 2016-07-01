@@ -9,6 +9,7 @@
 .alias rom_bank $%(rom bank)x
 .alias old_bytev $%(bytev)x
 .alias tape_workspace $%(tape workspace)x
+.alias tape_workspace_call_address $%(tape workspace call address)x
 
 rom_start:
 .byte 0, 0, 0   ; null language entry

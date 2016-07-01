@@ -360,10 +360,12 @@ def usage():
         "minimal ROM.\n\n"
         "If a minimal ROM image is not used, the -t option can be used to specify\n"
         "that code to override *TAPE calls should be used.\n"
-        "The workspace for the ROM can be given as a hexadecimal value and specifies\n"
-        "the address in memory where the persistent ROM pointer will be stored, and\n"
-        "also the code and old BYTEV vector address for *TAPE interception (if used).\n"
-        "The workspace defaults to a00.\n"
+        "The workspace for the ROM can be given as a hexadecimal value with the -w option\n"
+        "and specifies the address in memory where the persistent ROM pointer will be\n"
+        "stored and also the code and old BYTEV vector address for *TAPE interception (if\n"
+        "used). The workspace defaults to a00.\n"
+        "If you specify a pair of addresses separated by a colon (e.g, d3f:ef97) then the\n"
+        "second address will be used for the BYTEV vector address.\n"
         "The -l option determines whether the first ROM will be read again after the\n"
         "second ROM has been accessed. By default, the first ROM will not be readable\n"
         "to ensure that files on the second ROM following a split file can be read.\n\n"
@@ -436,9 +438,16 @@ if __name__ == "__main__":
             
             w, workspace = find_option(args, "-w", 1)
             if w:
-                workspace = int(workspace, 16)
+                if ":" in workspace:
+                    pieces = workspace.split(":")
+                    workspace = int(pieces[0], 16)
+                    tape_workspace_call_address = int(pieces[1], 16)
+                else:
+                    workspace = int(workspace, 16)
+                    tape_workspace_call_address = None
             else:
                 workspace = 0xa00
+                tape_workspace_call_address = None
             
             # Non-minimal ROMs always need to call *ROM explicitly.
             details[0]["init romfs code"] = open("init_romfs.oph").read()
@@ -538,6 +547,16 @@ if __name__ == "__main__":
         details[0]["tape init"] = open("tape_init.oph").read()
         details[0]["call tape init"] = "    jsr tape_init"
         workspace_end += 10
+        
+        # Allow the vector to point to somewhere other than the code itself. This
+        # enables us to borrow a JMP instruction elsewhere in memory to hide the
+        # true location of our code.
+        if tape_workspace_call_address is None:
+            tape_workspace_call_address = details[0]["tape workspace"]
+        
+        details[0]["tape workspace call address"] = tape_workspace_call_address
+    else:
+        details[0]["tape workspace call address"] = details[0]["tape workspace"]
     
     # Calculate the starting address of the ROM data by assembling the ROM
     # template files.

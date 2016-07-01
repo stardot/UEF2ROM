@@ -1,9 +1,9 @@
-    ; Copy the vector handling code into the tape tape_workspace .
+    ; Copy the vector handling code into the tape tape_workspace.
 
     ldx #0
     rom_loop:
         lda new_bytev,x
-        sta tape_workspace ,x
+        sta tape_workspace,x
         inx
         cpx #[new_bytev_end - new_bytev]
         bne rom_loop
@@ -14,9 +14,9 @@
     sta [old_bytev + 1]
 
     sei
-    lda #<tape_workspace 
+    lda #<tape_workspace_call_address
     sta BYTEV
-    lda #>tape_workspace 
+    lda #>tape_workspace_call_address
     sta [BYTEV + 1]
     cli
 
