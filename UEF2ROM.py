@@ -75,8 +75,6 @@ def read_block(block):
 
 def write_block(u, name, load, exec_, data, n, flags, address):
 
-    out = ""
-    
     # Write the alignment character
     out = "*"+name[:10]+"\000"
     

@@ -33,8 +33,6 @@ copyright_offset:
 copyright_string:
 .byte "%(copyright)s", 0
 
-.byte 0
-
 service_entry:
 
 %(service entry command code)s
