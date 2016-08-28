@@ -556,6 +556,8 @@ if __name__ == "__main__":
     else:
         details[0]["tape workspace call address"] = details[0]["tape workspace"]
     
+    print (workspace_end - workspace), "bytes of workspace used."
+    
     # Calculate the starting address of the ROM data by assembling the ROM
     # template files.
     minimal_header_template = open(minimal_header_template_file).read()
