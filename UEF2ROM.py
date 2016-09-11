@@ -142,6 +142,8 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
         # again after entering BASIC.
         if star_run:
             code = ''.join(boot_code) % ("*/%s" % names[indices[0]])
+        elif star_exec:
+            code = ''.join(boot_code) % ('*EXEC"%s"' % names[indices[0]])
         else:
             code = ''.join(boot_code) % ('CHAIN"%s"' % names[indices[0]])
         
@@ -347,7 +349,7 @@ def find_option(args, label, number = 0):
     return True, values
 
 def usage():
-    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-p] [-t] [-w <workspace>] [-l])] [-s] [-b [-a] [-r]] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
+    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-p] [-t] [-w <workspace>] [-l])] [-s] [-b [-a] [-r|-x]] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
     sys.stderr.write(
         "The file indices can be given as a comma-separated list and can include\n"
         "hyphen-separated ranges of indices.\n\n"
@@ -370,7 +372,8 @@ def usage():
         "If the -s option is specified, files may be split between ROMs.\n\n"
         "If the -b option is specified, the first ROM will be run when selected.\n"
         "Additionally, if the -a option is given, the ROM will be made auto-bootable.\n"
-        "The -r option is used to specify that the first file must be executed with *RUN.\n\n"
+        "The -r option is used to specify that the first file must be executed with *RUN.\n"
+        "The -x option indicates that *EXEC is used to execute the first file.\n\n"
         )
     sys.exit(1)
 
@@ -467,6 +470,7 @@ if __name__ == "__main__":
         autobootable = find_option(args, "-a", 0)
         bootable = find_option(args, "-b", 0)
         star_run = find_option(args, "-r", 0)
+        star_exec = find_option(args, "-x", 0)
         
         if autobootable:
             details[0]["service boot code"] = open("service_boot.oph").read()
