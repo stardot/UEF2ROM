@@ -459,7 +459,8 @@ if __name__ == "__main__":
          "second rom bank check code": "",
          "second rom bank init code": "",
          "second rom bank pointer sync code": "",
-         "decode code": ""},
+         "decode code": "",
+         "trigger check": ""},
         {"title": "Test ROM",
          "version string": "1.0",
          "version": 1,
@@ -470,7 +471,8 @@ if __name__ == "__main__":
          "second rom bank check code": "",
          "second rom bank init code": "",
          "second rom bank pointer sync code": "",
-         "decode code": ""},
+         "decode code": "",
+         "trigger check": ""},
         ]
     
     try:
@@ -543,7 +545,7 @@ if __name__ == "__main__":
                 else:
                     decomp_addrs.append(None)
             
-            details[0]["decode code"] = details[1]["decode code"] = open("decompressors/dp_decode.oph").read()
+            details[0]["decode code"] = details[1]["decode code"] = open("asm/dp_decode.oph").read()
         else:
             decomp_addrs = []
         
