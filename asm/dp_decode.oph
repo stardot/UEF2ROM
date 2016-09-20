@@ -1,0 +1,171 @@
+; Copyright (C) 2016 David Boddie <david@boddie.org.uk>
+;
+; This program is free software: you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation, either version 3 of the License, or
+; (at your option) any later version.
+;
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+.alias src       $70
+.alias src_low   $70
+.alias src_high  $71
+.alias dest      $72
+.alias dest_low  $72
+.alias dest_high $73
+.alias end_low   $74
+.alias end_high  $75
+
+.alias special      $76
+.alias offset       $77
+.alias from_low     $78
+.alias from_high    $79
+
+decompress: ; $70,$71=compressed data, $72,$73=destination start
+            ; $74,$75=destination end (one byte after decompressed data)
+
+    ldy #0
+    lda (src),y
+    sta special
+
+    jsr increment_src
+
+    decompress_loop:
+
+        lda (src),y                 ; data[i]
+        cmp special
+        beq handle_special
+
+            sta (dest),y
+            jsr increment_src       ; i += 1
+            jsr increment_dest
+            jmp decompress_next
+
+        handle_special:
+
+            iny                     ; i + 1
+            lda (src),y             ; offset
+            bne handle_reference
+
+                lda special
+                dey                 ; i
+                sta (dest),y
+                jsr increment_src_2 ; i += 2
+                jsr increment_dest
+                jmp decompress_next
+
+            handle_reference:
+
+                cmp #$80
+                bcs far_reference
+
+                    sta offset  ; the offset is a combined offset-count value
+                    and #$f0
+                    lsr
+                    lsr
+                    lsr
+                    lsr
+                    adc #3      ; count = (offset >> 4) + 3
+                    tax
+
+                    lda offset
+                    and #$0f
+                    sta offset
+
+                    ldy #0
+
+                    jsr increment_src_2     ; i += 2
+                    jsr copy_decompressed
+                    jmp decompress_next
+
+                far_reference:
+
+                    and #$7f
+                    adc #0      ; C is set, so this adds 1
+                    sta offset
+
+                    iny         ; i + 2
+                    lda (src),y ; count - 4
+                    tax
+
+                    ldy #0
+
+                    jsr increment_src_3     ; i += 3
+                    jsr copy_decompressed
+                    ldx #4
+                    jsr copy_decompressed   ; copy the extra four bytes
+
+        decompress_next:
+
+        lda dest_low
+        cmp end_low
+        bne decompress_loop
+        lda dest_high
+        cmp end_high
+        bne decompress_loop
+
+    clc
+    rts
+
+increment_src_3:
+    jsr increment_src
+
+increment_src_2:
+    jsr increment_src
+
+increment_src:
+
+    inc src_low
+    bne increment_src_exit
+    inc src_high
+
+    increment_src_exit:
+    rts
+
+increment_dest:
+
+    inc dest_low
+    bne increment_dest_exit
+    inc dest_high
+
+    increment_dest_exit:
+    rts
+
+copy_decompressed:
+
+    cpx #0                      ; Since we don't add 4 to the stored count
+    bne copy_decompressed_begin ; value to get the real length, we need to
+    rts                         ; handle the case where the stored value is 0.
+
+    copy_decompressed_begin:
+ 
+    sec
+    lda dest_low
+    sbc offset      ; copy from = dest - offset
+    sta from_low
+    lda dest_high
+    sbc #0
+    sta from_high
+    clc
+
+    copy_decompressed_loop:
+
+        lda (from_low),y
+        sta (dest),y
+
+        inc from_low
+        bne copy_decompressed_loop_next
+        inc from_high
+
+        copy_decompressed_loop_next:
+        jsr increment_dest
+        dex
+        bne copy_decompressed_loop
+
+    rts
