@@ -85,6 +85,7 @@ read_byte_command:
     bne exit
     ldy #0
     lda (exported_rom_pointer),y
+%(trigger check)s
     tay
 
 claim1:
@@ -109,5 +110,8 @@ rom_command:
 
 %(init romfs code)s
 %(boot code)s
+
+; Optionally include code to perform decompression of compressed data.
+%(decode code)s
 
 data:

@@ -19,9 +19,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import commands, os, stat, struct, sys, tempfile
 from tools import UEFfile
+from compressors.distance_pair import compress
 
-header_template_file = "romfs-template.oph"
-minimal_header_template_file = "romfs-minimal-template.oph"
+header_template_file = "asm/romfs-template.oph"
+minimal_header_template_file = "asm/romfs-minimal-template.oph"
 
 boot_code = [
     "\xa9\x8a",     # lda #$8a
@@ -107,7 +108,7 @@ def write_block(u, name, load, exec_, data, n, flags, address):
     
     return out
 
-def convert_chunks(u, indices, data_addresses, headers, rom_files):
+def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files):
 
     uef_files = []
     chunks = []
@@ -159,8 +160,15 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
     file_addresses = []
     blocks = []
     
+    # Start adding files to the first ROM at the address following the code.
     r = 0
     address = data_addresses[r]
+    end_address = 0xc000
+    
+    # Create a list of trigger addresses.
+    triggers = []
+    
+    # Examine the files at the given indices in the UEF file.
     
     for index in indices:
     
@@ -181,7 +189,13 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
             if this == 0:
                 file_addresses.append(address)
             
-            if address + len(block) >= 0xc000:
+            if decomp_addrs and last:
+                triggers.append(address + len(block) - 1)
+                # Reserve space for the ROM address, decompression start and
+                # finish addresses, and the special byte.
+                end_address -= 7
+            
+            if address + len(block) >= end_address:
             
                 # The block won't fit into the current ROM. Start a new one
                 # and add it there along with the other blocks in the file.
@@ -192,10 +206,12 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                     file_addresses.append(address)
                     blocks = []
                 
-                roms.append((files, file_addresses))
+                roms.append((files, file_addresses, triggers))
                 
                 files = []
                 file_addresses = []
+                triggers = []
+                end_address = 0xc000
                 
                 r += 1
                 if r >= len(data_addresses):
@@ -236,30 +252,39 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
     if files:
         # Record the address of the byte after the last file.
         file_addresses.append(address)
-        roms.append((files, file_addresses))
+        roms.append((files, file_addresses, triggers))
     
     if len(roms) > len(rom_files):
         sys.stderr.write("Not enough ROM files specified.\n")
         sys.exit(1)
+    
+    # Write the source for each ROM file, containing the appropriate ROM header
+    # and the files it contains in its ROMFS structure.
     
     for header, rom_file, rom in zip(headers, rom_files, roms):
     
         tf, temp_file = tempfile.mkstemp(suffix=os.extsep+'oph')
         os.write(tf, header)
         
-        files, file_addresses = rom
+        files, file_addresses, triggers = rom
         
         # Discard the address of the first file.
         address = file_addresses.pop(0)
         print rom_file
         
         first_block = True
-            
+        file_details = []
+        
         for blocks in files:
         
+            file_name = ""
+            load_addr = 0
+            length = 0
+            
             for b, (block, info) in enumerate(blocks):
             
                 name, load, exec_, block_data, this, flags = info
+                length += len(block_data)
                 last = (b == len(blocks) - 1) and block[0] != "\x23"
                 
                 # Potential flag modifications:
@@ -274,12 +299,17 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
                     
                     if last:
                         next_address = file_addresses.pop(0)
+                        file_details.append((name, load, length))
+                        length = 0
+                        
                         if this == 0:
                             print " %s starts at $%x and ends at $%x, next file at $%x" % (
                                 repr(name), address, address + len(block),
                                 next_address)
                     
                     elif this == 0:
+                        file_name = name
+                        load_addr = load
                         next_address = file_addresses[0]
                         print " %s starts at $%x, next file at $%x" % (
                             repr(name), address, next_address)
@@ -300,9 +330,31 @@ def convert_chunks(u, indices, data_addresses, headers, rom_files):
         
         write_end_marker(tf)
         
+        if triggers:
+        
+            os.write(tf, "\ntriggers:\n")
+            for info, addr, decomp_addr in zip(file_details, triggers, decomp_addrs):
+            
+                # Unpack the file information.
+                name, load_addr, length = info
+                
+                if decomp_addr is None:
+                    decomp_addr = load_addr
+                
+                decomp_addr = decomp_addr & 0xffff
+                decomp_end_addr = decomp_addr + length
+                
+                os.write(tf, "; %s\n" % name)
+                os.write(tf, ".byte $%02x, $%02x ; trigger\n" % (addr & 0xff, addr >> 8))
+                os.write(tf, ".byte $%02x, $%02x ; decompression start address\n" % (decomp_addr & 0xff, decomp_addr >> 8))
+                os.write(tf, ".byte $%02x, $%02x ; decompression end address\n" % (decomp_end_addr & 0xff, decomp_end_addr >> 8))
+                os.write(tf, ".byte $%02x      ; special byte\n" % 0)
+            
+            os.write(tf, "\n")
+        
         os.close(tf)
         os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file))
-        os.remove(temp_file)
+        #os.remove(temp_file)
 
 def write_end_marker(tf):
 
@@ -349,7 +401,7 @@ def find_option(args, label, number = 0):
     return True, values
 
 def usage():
-    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-p] [-t] [-w <workspace>] [-l])] [-s] [-b [-a] [-r|-x]] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
+    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-p] [-t] [-w <workspace>] [-l])] [-s] [-b [-a] [-r|-x]] [-c] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
     sys.stderr.write(
         "The file indices can be given as a comma-separated list and can include\n"
         "hyphen-separated ranges of indices.\n\n"
@@ -373,7 +425,10 @@ def usage():
         "If the -b option is specified, the first ROM will be run when selected.\n"
         "Additionally, if the -a option is given, the ROM will be made auto-bootable.\n"
         "The -r option is used to specify that the first file must be executed with *RUN.\n"
-        "The -x option indicates that *EXEC is used to execute the first file.\n\n"
+        "The -x option indicates that *EXEC is used to execute the first file.\n"
+        "The -c option is used to indicate that files should be compressed, and is used\n"
+        "to supply information about the location in memory where they should be\n"
+        "decompressed.\n\n"
         )
     sys.exit(1)
 
@@ -403,7 +458,8 @@ if __name__ == "__main__":
          "first rom bank behaviour code": "",
          "second rom bank check code": "",
          "second rom bank init code": "",
-         "second rom bank pointer sync code": ""},
+         "second rom bank pointer sync code": "",
+         "decode code": ""},
         {"title": "Test ROM",
          "version string": "1.0",
          "version": 1,
@@ -413,7 +469,8 @@ if __name__ == "__main__":
          "init romfs code": "",
          "second rom bank check code": "",
          "second rom bank init code": "",
-         "second rom bank pointer sync code": ""},
+         "second rom bank pointer sync code": "",
+         "decode code": ""},
         ]
     
     try:
@@ -451,18 +508,22 @@ if __name__ == "__main__":
                 tape_workspace_call_address = None
             
             # Non-minimal ROMs always need to call *ROM explicitly.
-            details[0]["init romfs code"] = open("init_romfs.oph").read()
+            details[0]["init romfs code"] = open("asm/init_romfs.oph").read()
             
             # The second ROM can use a persistent ROM pointer.
             if find_option(args, "-p", 0):
-                details[1]["second rom bank check code"] = open("second_rom_bank_check.oph").read()
-                details[1]["second rom bank pointer sync code"] = open("second_rom_bank_sync.oph").read()
+                details[1]["second rom bank check code"] = open("asm/second_rom_bank_check.oph").read()
+                details[1]["second rom bank pointer sync code"] = open("asm/second_rom_bank_sync.oph").read()
             
             loop = find_option(args, "-l", 0)
         
         else:
             if find_option(args, "-t", 0):
                 sys.stderr.write("Cannot override *TAPE in minimal ROMs.\n")
+                sys.exit(1)
+            
+            if find_option(args, "-c", 1)[0]:
+                sys.stderr.write("Cannot use compression in minimal ROMs.\n")
                 sys.exit(1)
         
         split_files = find_option(args, "-s", 0)
@@ -471,12 +532,26 @@ if __name__ == "__main__":
         bootable = find_option(args, "-b", 0)
         star_run = find_option(args, "-r", 0)
         star_exec = find_option(args, "-x", 0)
+        compress_files, hints = find_option(args, "-c", 1)
+        
+        if compress_files:
+            # -c [<addr0>]:[<addr1>]:...:[<addrN>]
+            decomp_addrs = []
+            for addr in hints.split(":"):
+                if addr:
+                    decomp_addrs.append(int(addr, 16))
+                else:
+                    decomp_addrs.append(None)
+            
+            details[0]["decode code"] = details[1]["decode code"] = open("decompressors/dp_decode.oph").read()
+        else:
+            decomp_addrs = []
         
         if autobootable:
-            details[0]["service boot code"] = open("service_boot.oph").read()
+            details[0]["service boot code"] = open("asm/service_boot.oph").read()
             if minimal:
                 # Minimal ROMs only need to call *ROM if they are auto-bootable.
-                details[0]["init romfs code"] = open("init_romfs.oph").read()
+                details[0]["init romfs code"] = open("asm/init_romfs.oph").read()
             bootable = True
         else:
             if minimal:
@@ -486,11 +561,11 @@ if __name__ == "__main__":
             else:
                 # Not auto-bootable or minimal, so include code to allow
                 # the ROM to be initialised.
-                details[0]["service entry command code"] = open("service_entry_command.oph").read()
-                details[0]["service command code"] = open("service_command.oph").read()
+                details[0]["service entry command code"] = open("asm/service_entry_command.oph").read()
+                details[0]["service command code"] = open("asm/service_command.oph").read()
         
         if bootable:
-            details[0]["boot code"] = open("boot_code.oph").read()
+            details[0]["boot code"] = open("asm/boot_code.oph").read()
         else:
             details[0]["boot code"] = "pla\npla\nlda #0\nrts"
     
@@ -531,22 +606,22 @@ if __name__ == "__main__":
             # For two ROMs we use an additional byte for the bank number.
             workspace_end += 1
             
-            details[0]["first rom bank init code"] = open("first_rom_bank_init.oph").read()
-            details[0]["first rom bank check code"] = open("first_rom_bank_check.oph").read()
+            details[0]["first rom bank init code"] = open("asm/first_rom_bank_init.oph").read()
+            details[0]["first rom bank check code"] = open("asm/first_rom_bank_check.oph").read()
             if loop:
                 details[0]["first rom bank behaviour code"] = "jsr reset_pointer"
             else:
                 details[0]["first rom bank behaviour code"] = "bne exit"
             
             details[0]["second rom bank init code"] = \
-                details[1]["second rom bank init code"] = open("second_rom_bank_init.oph").read()
+                details[1]["second rom bank init code"] = open("asm/second_rom_bank_init.oph").read()
     
     # Add entries for tape interception, even if they are unused.
     details[0]["bytev"] = workspace_end
     details[0]["tape workspace"] = workspace_end + 2
     
     if tape_override:
-        details[0]["tape init"] = open("tape_init.oph").read()
+        details[0]["tape init"] = open("asm/tape_init.oph").read()
         details[0]["call tape init"] = "    jsr tape_init"
         workspace_end += 10
         
@@ -572,7 +647,7 @@ if __name__ == "__main__":
     
     u = UEFfile.UEFfile(uef_file)
     
-    convert_chunks(u, indices, [data_address, minimal_data_address],
+    convert_chunks(u, indices, decomp_addrs, [data_address, minimal_data_address],
         [header_template % details[0], minimal_header_template % details[1]],
         rom_files)
     

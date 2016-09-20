@@ -90,6 +90,7 @@ read_byte_command:
     read_raw_data:
     ldy #0
     lda (exported_rom_pointer),y
+%(trigger check)s
     tay
 
 claim1:
@@ -111,7 +112,7 @@ os120:
     tay
     jsr OSRDRM
     tay
-    jmp claim1
+    jmp claim1          ; This might not be the correct way to return on OS 1.20.
 
 service_command:
 %(service command code)s
@@ -147,5 +148,8 @@ sync_pointers:
     lda [rom_pointer + 1]
     sta [exported_rom_pointer + 1]
     rts
+
+; Optionally include code to perform decompression of compressed data.
+%(decode code)s
 
 data:
