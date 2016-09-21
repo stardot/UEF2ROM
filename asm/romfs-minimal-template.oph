@@ -102,6 +102,7 @@ claim1:
     jmp claim
 
 os120:
+%(trigger check)s
     lda current_rom
     eor #$0f
     tay

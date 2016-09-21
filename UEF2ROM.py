@@ -405,6 +405,12 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
         
             os.write(tf, "\n; Compressed data\n")
             
+            if bootable:
+                file_details.pop(0)
+            
+            while len(decomp_addrs) < len(file_details):
+                decomp_addrs.append(None)
+            
             addresses = []
             for info, addr, decomp_addr in zip(file_details, triggers, decomp_addrs):
             
@@ -515,20 +521,22 @@ def usage():
         "The workspace for the ROM can be given as a hexadecimal value with the -w option\n"
         "and specifies the address in memory where the persistent ROM pointer will be\n"
         "stored and also the code and old BYTEV vector address for *TAPE interception (if\n"
-        "used). The workspace defaults to a00.\n"
+        "used). The workspace defaults to a00.\n\n"
         "If you specify a pair of addresses separated by a colon (e.g, d3f:ef97) then the\n"
-        "second address will be used for the BYTEV vector address.\n"
+        "second address will be used for the BYTEV vector address.\n\n"
         "The -l option determines whether the first ROM will be read again after the\n"
         "second ROM has been accessed. By default, the first ROM will not be readable\n"
         "to ensure that files on the second ROM following a split file can be read.\n\n"
         "If the -s option is specified, files may be split between ROMs.\n\n"
         "If the -b option is specified, the first ROM will be run when selected.\n"
-        "Additionally, if the -a option is given, the ROM will be made auto-bootable.\n"
+        "Additionally, if the -a option is given, the ROM will be made auto-bootable.\n\n"
         "The -r option is used to specify that the first file must be executed with *RUN.\n"
-        "The -x option indicates that *EXEC is used to execute the first file.\n"
+        "The -x option indicates that *EXEC is used to execute the first file.\n\n"
         "The -c option is used to indicate that files should be compressed, and is used\n"
         "to supply information about the location in memory where they should be\n"
-        "decompressed.\n\n"
+        "decompressed. The colon-separated list that follows specifies the load\n"
+        "addresses of the files. Note that this option is not well-tested and can\n"
+        "only be used to create single ROM files.\n"
         )
     sys.exit(1)
 
@@ -624,10 +632,6 @@ if __name__ == "__main__":
         else:
             if find_option(args, "-t", 0):
                 sys.stderr.write("Cannot override *TAPE in minimal ROMs.\n")
-                sys.exit(1)
-            
-            if find_option(args, "-c", 1)[0]:
-                sys.stderr.write("Cannot use compression in minimal ROMs.\n")
                 sys.exit(1)
         
         split_files = find_option(args, "-s", 0)
