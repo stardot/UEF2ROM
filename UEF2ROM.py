@@ -397,60 +397,58 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
         
         write_end_marker(tf)
         
+        # If a list of triggers was compiled, write the compressed data after
+        # the ROMFS data, and write the associated addresses at the end of the
+        # ROM file.
+        
         if triggers:
         
             os.write(tf, "\n; Compressed data\n")
             
-            for info, decomp_addr in zip(file_details, decomp_addrs):
-            
-                # Unpack the file information.
-                name, load_addr, block_info = info
-                block_info.src_label = "src_%x" % id(block_info)
-                
-                os.write(tf, "\n; %s\n" % repr(name)[1:-1])
-                os.write(tf, block_info.src_label + ":\n")
-                os.write(tf, format_data(block_info.data))
-            
-            os.write(tf, "\n.alias after_triggers %i\n" % (len(triggers) * 2))
-            os.write(tf, "\ntriggers:\n")
-            for info, addr in zip(file_details, triggers):
-            
-                # Unpack the file information and write the trigger address.
-                name, load_addr, length = info
-                os.write(tf, ".byte $%02x, $%02x ; %s\n" % (addr & 0xff, addr >> 8, repr(name)[1:-1]))
-            
-            os.write(tf, "\nsrc_addresses:\n")
-            for info, decomp_addr in zip(file_details, decomp_addrs):
+            addresses = []
+            for info, addr, decomp_addr in zip(file_details, triggers, decomp_addrs):
             
                 # Unpack the file information.
                 name, load_addr, block_info = info
                 
-                src_label = block_info.src_label
-                os.write(tf, ".byte <%s, >%s ; source address\n" % (src_label, src_label))
-            
-            os.write(tf, "\ndest_addresses:\n")
-            end_addresses = []
-            for info, decomp_addr in zip(file_details, decomp_addrs):
-            
-                # Unpack the file information.
-                name, load_addr, block_info = info
+                src_label = "src_%x" % id(block_info)
                 
                 if decomp_addr is None:
                     decomp_addr = load_addr
                 
                 decomp_addr = decomp_addr & 0xffff
-                end_addresses.append(decomp_addr + block_info.raw_length)
+                addresses.append((name, addr, src_label, decomp_addr, decomp_addr + block_info.raw_length))
+                
+                os.write(tf, "\n; %s\n" % repr(name)[1:-1])
+                os.write(tf, src_label + ":\n")
+                os.write(tf, format_data(block_info.data))
+            
+            os.write(tf, "\n.alias after_triggers %i\n" % (len(triggers) * 2))
+            os.write(tf, "\ntriggers:\n")
+            
+            for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
+                os.write(tf, ".byte $%02x, $%02x ; %s\n" % (addr & 0xff, addr >> 8, repr(name)[1:-1]))
+            
+            os.write(tf, "\nsrc_addresses:\n")
+            
+            for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
+                os.write(tf, ".byte <%s, >%s ; source address\n" % (src_label, src_label))
+            
+            os.write(tf, "\ndest_addresses:\n")
+            
+            for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
                 os.write(tf, ".byte $%02x, $%02x ; decompression start address\n" % (decomp_addr & 0xff, decomp_addr >> 8))
             
             os.write(tf, "\ndest_end_addresses:\n")
-            for addr in end_addresses:
-                os.write(tf, ".byte $%02x, $%02x ; decompression end address\n" % (addr & 0xff, addr >> 8))
+            
+            for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
+                os.write(tf, ".byte $%02x, $%02x ; decompression end address\n" % (decomp_end_addr & 0xff, decomp_end_addr >> 8))
             
             os.write(tf, "\n")
         
         os.close(tf)
         os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file))
-        #os.remove(temp_file)
+        os.remove(temp_file)
 
 def write_end_marker(tf):
 
