@@ -16,9 +16,11 @@
 .alias src       $70
 .alias src_low   $70
 .alias src_high  $71
+
 .alias dest      $72
 .alias dest_low  $72
 .alias dest_high $73
+
 .alias end_low   $74
 .alias end_high  $75
 
@@ -31,10 +33,10 @@ decompress: ; $70,$71=compressed data, $72,$73=destination start
             ; $74,$75=destination end (one byte after decompressed data)
 
     ldy #0
-    lda (src),y
+    lda (src),y                     ; data[i]
     sta special
 
-    jsr increment_src
+    jsr increment_src               ; i += 1
 
     decompress_loop:
 

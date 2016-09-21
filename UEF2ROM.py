@@ -43,6 +43,17 @@ boot_code = [
     'KEY9 %s|M\r',
     ]
 
+class Block:
+
+    def __init__(self, data, info):
+        self.data = data
+        self.info = info
+
+class Compressed(Block):
+
+    def __init__(self, data, info, raw_length):
+        Block.__init__(self, data, info)
+        self.raw_length = raw_length
 
 def format_data(data):
 
@@ -100,11 +111,12 @@ def write_block(u, name, load, exec_, data, n, flags, address):
     # Header CRC
     out = out + struct.pack("<H", u.crc(out[1:]))
     
-    # Block data
-    out = out + data
-    
-    # Block CRC
-    out = out + struct.pack("<H", u.crc(data))
+    if data:
+        # Block data
+        out = out + data
+        
+        # Block CRC
+        out = out + struct.pack("<H", u.crc(data))
     
     return out
 
@@ -172,12 +184,54 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
     
     for index in indices:
     
+        if decomp_addrs and (not bootable or index != 0):
+        
+            # When compressing, for all files other than the initial boot file,
+            # insert a header with no block data into the stream followed by
+            # compressed data and skip all other blocks in the file.
+            
+            chunk = uef_files[index][0]
+            name, load, exec_, block_data, this, flags = info = read_block(chunk)
+            
+            # Create a block with only a header and no data.
+            info = name, load, exec_, "", 0, 0x80
+            # Record the address of the last byte in the header.
+            header = write_block(u, name, load, exec_, "", 0, 0x80, 0)
+            triggers.append(address + len(header) - 1)
+            
+            # Attach the compressed data to the block.
+            raw_data = ""
+            for chunk in uef_files[index]:
+                raw_data += read_block(chunk)[3]
+            
+            raw_length = len(raw_data)
+            
+            block = "".join(map(chr, compress(map(ord, raw_data))))
+            
+            if address + len(header) + len(block) >= end_address:
+                print "File %s won't fit in the current ROM." % repr(name)
+                sys.exit(1)
+            
+            # Reserve space for the ROM address, decompression start and
+            # finish addresses, source address and compressed data.
+            end_address -= 8 + len(block)
+            
+            file_addresses.append(address)
+            address += len(header)
+            files.append([Compressed(block, info, raw_length)])
+            
+            # Examine the next file.
+            continue
+        
+        # For uncompressed data, handle each chunk from the UEF file separately.
+        
         for i, chunk in enumerate(uef_files[index]):
         
             name, load, exec_, block_data, this, flags = info = read_block(chunk)
             
             last = (i == len(uef_files[index]) - 1)
             
+            # Encode the full header and data, or continuation byte and data.
             if this == 0 or last:
                 # The next block follows the normal header and block data.
                 block = chunk
@@ -188,12 +242,6 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
             
             if this == 0:
                 file_addresses.append(address)
-            
-            if decomp_addrs and last:
-                triggers.append(address + len(block) - 1)
-                # Reserve space for the ROM address, decompression start and
-                # finish addresses, and the special byte.
-                end_address -= 7
             
             if address + len(block) >= end_address:
             
@@ -231,11 +279,11 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
                     block = chunk
                 else:
                     print "Moving %s to the next ROM." % repr(name)
-                    for old_block, old_info in blocks:
-                        address += len(old_block)
+                    for old_block_info in blocks:
+                        address += len(old_block_info.data)
             
             address += len(block)
-            blocks.append((block, info))
+            blocks.append(Block(block, info))
         
         files.append(blocks)
         blocks = []
@@ -281,11 +329,11 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
             load_addr = 0
             length = 0
             
-            for b, (block, info) in enumerate(blocks):
+            for b, block_info in enumerate(blocks):
             
-                name, load, exec_, block_data, this, flags = info
+                name, load, exec_, block_data, this, flags = block_info.info
                 length += len(block_data)
-                last = (b == len(blocks) - 1) and block[0] != "\x23"
+                last = (b == len(blocks) - 1) and block_info.data[0] != "\x23"
                 
                 # Potential flag modifications:
                 #
@@ -294,17 +342,33 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
                 #if flags & 0x80 and not last:
                 #    flags = flags & 0x7f
                 
-                if this == 0 or last or first_block:
-                    os.write(tf, "; %s %x\n" % (name, this))
+                if isinstance(block_info, Compressed):
+                
+                    os.write(tf, "; %s %x\n" % (repr(name)[1:-1], this))
+                    
+                    next_address = file_addresses.pop(0)
+                    file_details.append((name, load, block_info))
+                    length = 0
+                    
+                    data = write_block(u, name, load, exec_, block_data, this, flags, next_address)
+                    os.write(tf, format_data(data))
+                    
+                    print " %s starts at $%x and ends at $%x, next file at $%x" % (
+                        repr(name), address, address + len(data),
+                        next_address)
+                
+                elif this == 0 or last or first_block:
+                    os.write(tf, "; %s %x\n" % (repr(name)[1:-1], this))
                     
                     if last:
                         next_address = file_addresses.pop(0)
-                        file_details.append((name, load, length))
+                        block_info.raw_length = length
+                        file_details.append((name, load, block_info))
                         length = 0
                         
                         if this == 0:
                             print " %s starts at $%x and ends at $%x, next file at $%x" % (
-                                repr(name), address, address + len(block),
+                                repr(name), address, address + len(block_info.data),
                                 next_address)
                     
                     elif this == 0:
@@ -320,35 +384,67 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
                             repr(name), address, next_address)
                     
                     first_block = False
-                    os.write(tf, format_data(
-                        write_block(u, name, load, exec_, block_data, this, flags, next_address)))
-                else:
-                    os.write(tf, "; %s %x\n" % (name, this))
-                    os.write(tf, format_data(block))
+                    
+                    data = write_block(u, name, load, exec_, block_data, this, flags, next_address)
+                    os.write(tf, format_data(data))
                 
-                address += len(block)
+                else:
+                    os.write(tf, "; %s %x\n" % (repr(name)[1:-1], this))
+                    data = block_info.data
+                    os.write(tf, format_data(data))
+                
+                address += len(data)
         
         write_end_marker(tf)
         
         if triggers:
         
-            os.write(tf, "\ntriggers:\n")
-            for info, addr, decomp_addr in zip(file_details, triggers, decomp_addrs):
+            os.write(tf, "\n; Compressed data\n")
+            
+            for info, decomp_addr in zip(file_details, decomp_addrs):
             
                 # Unpack the file information.
+                name, load_addr, block_info = info
+                block_info.src_label = "src_%x" % id(block_info)
+                
+                os.write(tf, "\n; %s\n" % repr(name)[1:-1])
+                os.write(tf, block_info.src_label + ":\n")
+                os.write(tf, format_data(block_info.data))
+            
+            os.write(tf, "\n.alias after_triggers %i\n" % (len(triggers) * 2))
+            os.write(tf, "\ntriggers:\n")
+            for info, addr in zip(file_details, triggers):
+            
+                # Unpack the file information and write the trigger address.
                 name, load_addr, length = info
+                os.write(tf, ".byte $%02x, $%02x ; %s\n" % (addr & 0xff, addr >> 8, repr(name)[1:-1]))
+            
+            os.write(tf, "\nsrc_addresses:\n")
+            for info, decomp_addr in zip(file_details, decomp_addrs):
+            
+                # Unpack the file information.
+                name, load_addr, block_info = info
+                
+                src_label = block_info.src_label
+                os.write(tf, ".byte <%s, >%s ; source address\n" % (src_label, src_label))
+            
+            os.write(tf, "\ndest_addresses:\n")
+            end_addresses = []
+            for info, decomp_addr in zip(file_details, decomp_addrs):
+            
+                # Unpack the file information.
+                name, load_addr, block_info = info
                 
                 if decomp_addr is None:
                     decomp_addr = load_addr
                 
                 decomp_addr = decomp_addr & 0xffff
-                decomp_end_addr = decomp_addr + length
-                
-                os.write(tf, "; %s\n" % name)
-                os.write(tf, ".byte $%02x, $%02x ; trigger\n" % (addr & 0xff, addr >> 8))
+                end_addresses.append(decomp_addr + block_info.raw_length)
                 os.write(tf, ".byte $%02x, $%02x ; decompression start address\n" % (decomp_addr & 0xff, decomp_addr >> 8))
-                os.write(tf, ".byte $%02x, $%02x ; decompression end address\n" % (decomp_end_addr & 0xff, decomp_end_addr >> 8))
-                os.write(tf, ".byte $%02x      ; special byte\n" % 0)
+            
+            os.write(tf, "\ndest_end_addresses:\n")
+            for addr in end_addresses:
+                os.write(tf, ".byte $%02x, $%02x ; decompression end address\n" % (addr & 0xff, addr >> 8))
             
             os.write(tf, "\n")
         
@@ -364,6 +460,12 @@ def get_data_address(header_file, rom_file):
 
     tf, temp_file = tempfile.mkstemp(suffix=os.extsep+'oph')
     os.write(tf, header_file)
+    # Include placeholder values.
+    os.write(tf, ".alias after_triggers 0\n")
+    os.write(tf, "triggers:\n")
+    os.write(tf, "src_addresses:\n")
+    os.write(tf, "dest_addresses:\n")
+    os.write(tf, "dest_end_addresses:\n")
     os.close(tf)
     
     os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file))
@@ -460,7 +562,8 @@ if __name__ == "__main__":
          "second rom bank init code": "",
          "second rom bank pointer sync code": "",
          "decode code": "",
-         "trigger check": ""},
+         "trigger check": "",
+         "trigger routine": ""},
         {"title": "Test ROM",
          "version string": "1.0",
          "version": 1,
@@ -472,7 +575,8 @@ if __name__ == "__main__":
          "second rom bank init code": "",
          "second rom bank pointer sync code": "",
          "decode code": "",
-         "trigger check": ""},
+         "trigger check": "",
+         "trigger routine": ""},
         ]
     
     try:
@@ -546,6 +650,8 @@ if __name__ == "__main__":
                     decomp_addrs.append(None)
             
             details[0]["decode code"] = details[1]["decode code"] = open("asm/dp_decode.oph").read()
+            details[0]["trigger check"] = details[1]["trigger check"] = "jsr trigger_check\n"
+            details[0]["trigger routine"] = details[1]["trigger routine"] = open("asm/trigger_check.oph").read()
         else:
             decomp_addrs = []
         

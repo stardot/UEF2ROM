@@ -2,6 +2,8 @@
 .alias current_paged_rom $f4
 .alias current_rom $f5
 .alias exported_rom_pointer $f6
+.alias exported_rom_pointer_low $f6
+.alias exported_rom_pointer_high $f7
 .alias OSRDRM $ffb9
 .alias rom_pointer $%(rom pointer)x
 .alias rom_bank $%(rom bank)x
@@ -83,9 +85,10 @@ read_byte_command:
     eor #$0f
     cmp current_paged_rom
     bne exit
+
+%(trigger check)s
     ldy #0
     lda (exported_rom_pointer),y
-%(trigger check)s
     tay
 
 claim1:
@@ -110,6 +113,9 @@ rom_command:
 
 %(init romfs code)s
 %(boot code)s
+
+; Optionally include code to check for certain ROM addresses and trigger actions.
+%(trigger routine)s
 
 ; Optionally include code to perform decompression of compressed data.
 %(decode code)s
