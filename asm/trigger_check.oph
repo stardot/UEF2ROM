@@ -1,0 +1,62 @@
+trigger_check:
+
+    ; Compare the exported ROM pointer to the triggers.
+
+    txa         ; Save X for later.
+    pha
+
+    ldx #after_triggers ; Set X to refer to the address after the trigger array.
+
+    trigger_check_loop:
+
+        dex
+        lda triggers,x                  ; Compare the high byte of the ROM
+        cmp exported_rom_pointer_high   ; pointer to the current trigger.
+        bne trigger_check_next
+
+        dex
+        lda triggers,x                  ; Compare the low byte of the ROM
+        cmp exported_rom_pointer_low    ; pointer to the current trigger.
+        beq trigger_start_decompression
+
+        cpx #0                          ; If not at the base of the array then
+        bne trigger_check_loop          ; loop again.
+        beq trigger_exit                ; Otherwise exit.
+
+        trigger_check_next:
+        dex                             ; Point to the low byte before looping
+        bne trigger_check_loop          ; again if not at the base of the array.
+
+    trigger_exit:
+
+    pla         ; Restore X.
+    tax
+    rts
+
+trigger_start_decompression:
+
+    lda src_addresses,x     ; Read the source address into the addresses used
+    sta src_low             ; for the source address in the decompression
+    inx                     ; routine.
+    lda src_addresses,x
+    sta src_high
+    dex
+
+    lda dest_addresses,x    ; Read the corresponding address into the addresses
+    sta dest_low            ; used for the destination and ending addresses.
+    inx
+    lda dest_addresses,x
+    sta dest_high
+    dex
+
+    lda dest_end_addresses,x
+    sta end_low
+    inx
+    lda dest_end_addresses,x
+    sta end_high
+
+    jsr decompress          ; Call the decompression routine.
+
+    pla                     ; Restore X.
+    tax
+    rts

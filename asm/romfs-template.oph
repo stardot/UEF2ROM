@@ -2,6 +2,8 @@
 .alias current_paged_rom $f4
 .alias current_rom $f5
 .alias exported_rom_pointer $f6
+.alias exported_rom_pointer_low $f6
+.alias exported_rom_pointer_high $f7
 .alias OSRDRM $ffb9
 
 .alias BYTEV $020a
@@ -87,10 +89,10 @@ read_byte_command:
     cmp current_paged_rom
     bne exit
 
+%(trigger check)s
     read_raw_data:
     ldy #0
     lda (exported_rom_pointer),y
-%(trigger check)s
     tay
 
 claim1:
@@ -107,12 +109,13 @@ claim1:
     jmp claim
 
 os120:
+%(trigger check)s
     lda current_rom
     eor #$0f
     tay
     jsr OSRDRM
     tay
-    jmp claim1          ; This might not be the correct way to return on OS 1.20.
+    jmp claim1
 
 service_command:
 %(service command code)s
@@ -148,6 +151,9 @@ sync_pointers:
     lda [rom_pointer + 1]
     sta [exported_rom_pointer + 1]
     rts
+
+; Optionally include code to check for certain ROM addresses and trigger actions.
+%(trigger routine)s
 
 ; Optionally include code to perform decompression of compressed data.
 %(decode code)s
