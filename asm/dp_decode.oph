@@ -13,24 +13,24 @@
 ; You should have received a copy of the GNU General Public License
 ; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-.alias src       $70
-.alias src_low   $70
-.alias src_high  $71
+.alias src       $90
+.alias src_low   $90
+.alias src_high  $91
 
-.alias dest      $72
-.alias dest_low  $72
-.alias dest_high $73
+.alias dest      $92
+.alias dest_low  $92
+.alias dest_high $93
 
-.alias end_low   $74
-.alias end_high  $75
+.alias end_low   $94
+.alias end_high  $95
 
-.alias special      $76
-.alias offset       $77
-.alias from_low     $78
-.alias from_high    $79
+.alias special      $96
+.alias offset       $97
+.alias from_low     $98
+.alias from_high    $99
 
-decompress: ; $70,$71=compressed data, $72,$73=destination start
-            ; $74,$75=destination end (one byte after decompressed data)
+decompress: ; $90,$91=compressed data, $92,$93=destination start
+            ; $94,$95=destination end (one byte after decompressed data)
 
     ldy #0
     lda (src),y                     ; data[i]

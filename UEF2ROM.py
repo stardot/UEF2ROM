@@ -208,6 +208,8 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
                 
                 # Compress the raw data.
                 cdata = "".join(map(chr, compress(map(ord, raw_data))))
+                print "Compressed %s from %i to %i bytes." % (repr(name)[1:-1],
+                    len(raw_data), len(cdata))
                 
                 remaining = end_address - address - 1
                 
@@ -224,7 +226,16 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
                     
                         # Decompress the truncated compressed data to find out
                         # how much raw data needs to be moved to the next ROM.
-                        cdata = cdata[:remaining - 8 - len(header)]
+                        # Avoid truncating the data in the middle of a special
+                        # byte sequence - this can be two bytes in length
+                        # following a special byte.
+                        
+                        special = cdata[0]
+                        end = remaining - 8 - len(header)
+                        while end > 2 and special in cdata[end-2:end]:
+                            end -= 1
+                        
+                        cdata = cdata[:end]
                         raw_data_written = decompress(map(ord, cdata))
                         
                         # Discard the raw data that has been handled.
@@ -235,7 +246,6 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
                         # Update the header to indicate that this block is not
                         # the last.
                         info = (name, load, exec_, "", this, 0)
-                        print info
                         header = write_block(u, name, load, exec_, "", this, 0, 0)
                         
                         if this == 0:
@@ -290,7 +300,6 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
                     if this == 0:
                         file_addresses.append(address)
                     
-                    print info
                     blocks.append(Compressed(cdata, info, len(raw_data)))
                     triggers.append(address + len(header) - 1)
                     
@@ -392,7 +401,6 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
         os.write(tf, header)
         
         files, file_addresses, triggers = rom
-        print map(hex, file_addresses)
         
         # Discard the address of the first file.
         address = file_addresses.pop(0)
@@ -483,7 +491,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
         
             os.write(tf, "\n; Compressed data\n")
             
-            if bootable and r == 0:
+            if bootable and rom == roms[0]:
                 file_details.pop(0)
             
             while len(decomp_addrs) < len(file_details):
@@ -507,6 +515,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
                 os.write(tf, src_label + ":\n")
                 os.write(tf, format_data(block_info.data))
             
+            #os.write(tf, "\n.alias debug %i" % (49 + roms.index(rom)))
             os.write(tf, "\n.alias after_triggers %i\n" % (len(triggers) * 2))
             os.write(tf, "\ntriggers:\n")
             
@@ -536,7 +545,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
         if os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file)) != 0:
             sys.exit(1)
         
-        #os.remove(temp_file)
+        os.remove(temp_file)
 
 def write_end_marker(tf):
 
@@ -548,6 +557,7 @@ def get_data_address(header_file, rom_file):
     os.write(tf, header_file)
     # Include placeholder values.
     os.write(tf, ".alias after_triggers 0\n")
+    #os.write(tf, ".alias debug 48\n")
     os.write(tf, "triggers:\n")
     os.write(tf, "src_addresses:\n")
     os.write(tf, "dest_addresses:\n")

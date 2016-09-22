@@ -67,7 +67,8 @@ init_sync_pointers:
     jsr sync_pointers
 
     lda current_paged_rom
-    eor #$0f
+    eor #$ff
+    and #$0f
     sta current_rom
 
 claim:
@@ -85,7 +86,8 @@ read_byte_command:
     bmi os120
 
     lda current_rom
-    eor #$0f
+    eor #$ff
+    and #$0f
     cmp current_paged_rom
     bne exit
 
@@ -111,7 +113,10 @@ claim1:
 os120:
 %(trigger check)s
     lda current_rom
-    eor #$0f
+    eor #$ff
+    and #$0f
+    cmp current_paged_rom
+    bne exit
     tay
     jsr OSRDRM
     tay
