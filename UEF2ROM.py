@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import commands, os, stat, struct, sys, tempfile
 from tools import UEFfile
-from compressors.distance_pair import compress
+from compressors.distance_pair import compress, decompress
 
 header_template_file = "asm/romfs-template.oph"
 minimal_header_template_file = "asm/romfs-minimal-template.oph"
@@ -193,32 +193,109 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
             chunk = uef_files[index][0]
             name, load, exec_, block_data, this, flags = info = read_block(chunk)
             
-            # Create a block with only a header and no data.
-            info = name, load, exec_, "", 0, 0x80
-            # Record the address of the last byte in the header.
-            header = write_block(u, name, load, exec_, "", 0, 0x80, 0)
-            triggers.append(address + len(header) - 1)
-            
-            # Attach the compressed data to the block.
+            # Concatenate the raw data from all the chunks in the file.
             raw_data = ""
             for chunk in uef_files[index]:
                 raw_data += read_block(chunk)[3]
             
-            raw_length = len(raw_data)
+            this = 0
             
-            block = "".join(map(chr, compress(map(ord, raw_data))))
+            while raw_data:
             
-            if address + len(header) + len(block) >= end_address:
-                print "File %s won't fit in the current ROM." % repr(name)
-                sys.exit(1)
-            
-            # Reserve space for the ROM address, decompression start and
-            # finish addresses, source address and compressed data.
-            end_address -= 8 + len(block)
-            
-            file_addresses.append(address)
-            address += len(header)
-            files.append([Compressed(block, info, raw_length)])
+                # Create a block with only a header and no data.
+                info = (name, load, exec_, "", this, 0x80)
+                header = write_block(u, name, load, exec_, "", this, 0x80, 0)
+                
+                # Compress the raw data.
+                cdata = "".join(map(chr, compress(map(ord, raw_data))))
+                
+                remaining = end_address - address - 1
+                
+                if remaining <= len(header) + 8 + len(cdata):
+                
+                    # The file won't fit into the current ROM. Either put it in a
+                    # new one, or split it and put the rest of the file there.
+                    print "File %s won't fit in the current ROM - %i bytes too long." % (
+                        repr(name), len(header) + 8 + len(cdata) - remaining)
+                    
+                    # Try to fit the block header, 8 byte address entries and
+                    # part of the compressed file in the remaining space.
+                    if split_files and (remaining >= 8 + len(header) + 256):
+                    
+                        # Decompress the truncated compressed data to find out
+                        # how much raw data needs to be moved to the next ROM.
+                        cdata = cdata[:remaining - 8 - len(header)]
+                        raw_data_written = decompress(map(ord, cdata))
+                        
+                        # Discard the raw data that has been handled.
+                        raw_data = raw_data[len(raw_data_written):]
+                        print "Writing %i bytes, leaving %i to be written." % (
+                            len(raw_data_written), len(raw_data))
+                        
+                        # Update the header to indicate that this block is not
+                        # the last.
+                        info = (name, load, exec_, "", this, 0)
+                        print info
+                        header = write_block(u, name, load, exec_, "", this, 0, 0)
+                        
+                        if this == 0:
+                            file_addresses.append(address)
+                        
+                        # Add information about the truncated block to the list
+                        # of blocks, update the block number and record the
+                        # trigger address.
+                        blocks.append(Compressed(cdata, info, len(raw_data_written)))
+                        this += 1
+                        triggers.append(address + len(header) - 1)
+                        
+                        address += len(header)
+                        load += len(raw_data_written)
+                    
+                    # Add pending blocks to the list of files, add an address
+                    # for the end of ROMFS marker, and clear the list of blocks.
+                    files.append(blocks)
+                    file_addresses.append(address)
+                    blocks = []
+                    
+                    roms.append((files, file_addresses, triggers))
+                    
+                    # Start a new ROM.
+                    files = []
+                    file_addresses = []
+                    triggers = []
+                    end_address = 0xc000
+                    
+                    r += 1
+                    if r >= len(data_addresses):
+                        sys.stderr.write("Not enough ROM files specified.\n")
+                        sys.exit(1)
+                    
+                    # Update the data address from the start of the new ROM's
+                    # data area.
+                    address = data_addresses[r]
+                    
+                    if split_files:
+                        print "Splitting %s - moving %i bytes to the next ROM." % (
+                            repr(name), len(raw_data))
+                        # Ensure that the first block in the new ROM is treated
+                        # as the start of a file.
+                        file_addresses.append(address)
+                    else:
+                        print "Moving %s to the next ROM." % repr(name)
+                else:
+                    # Reserve space for the ROM address, decompression start
+                    # and finish addresses, source address and compressed data.
+                    end_address -= 8 + len(cdata)
+                    
+                    if this == 0:
+                        file_addresses.append(address)
+                    
+                    print info
+                    blocks.append(Compressed(cdata, info, len(raw_data)))
+                    triggers.append(address + len(header) - 1)
+                    
+                    address += len(header)
+                    raw_data = ""
             
             # Examine the next file.
             continue
@@ -315,6 +392,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
         os.write(tf, header)
         
         files, file_addresses, triggers = rom
+        print map(hex, file_addresses)
         
         # Discard the address of the first file.
         address = file_addresses.pop(0)
@@ -405,7 +483,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
         
             os.write(tf, "\n; Compressed data\n")
             
-            if bootable:
+            if bootable and r == 0:
                 file_details.pop(0)
             
             while len(decomp_addrs) < len(file_details):
@@ -451,10 +529,14 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
                 os.write(tf, ".byte $%02x, $%02x ; decompression end address\n" % (decomp_end_addr & 0xff, decomp_end_addr >> 8))
             
             os.write(tf, "\n")
+            
+            decomp_addrs = decomp_addrs[len(triggers):]
         
         os.close(tf)
-        os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file))
-        os.remove(temp_file)
+        if os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file)) != 0:
+            sys.exit(1)
+        
+        #os.remove(temp_file)
 
 def write_end_marker(tf):
 
@@ -472,7 +554,9 @@ def get_data_address(header_file, rom_file):
     os.write(tf, "dest_end_addresses:\n")
     os.close(tf)
     
-    os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file))
+    if os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file)):
+        sys.exit(1)
+    
     data_address = 0x8000 + os.stat(rom_file)[stat.ST_SIZE]
     os.remove(temp_file)
     
