@@ -166,6 +166,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
             # If we inserted a !BOOT file, increment all the indices by 1 and
             # insert the !BOOT file at the start.
             indices = [0] + map(lambda i: i + 1, indices)
+            decomp_addrs[0].insert(0, "x")
     
     roms = []
     files = []
@@ -182,9 +183,14 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
     
     # Examine the files at the given indices in the UEF file.
     
-    for index in indices:
+    for i, index in enumerate(indices):
     
-        if decomp_addrs and (not bootable or index != 0):
+        if decomp_addrs[r]:
+            decomp_addr = decomp_addrs[r].pop(0)
+        else:
+            decomp_addr = None
+        
+        if decomp_addr != "x":
         
             # When compressing, for all files other than the initial boot file,
             # insert a header with no block data into the stream followed by
@@ -192,6 +198,10 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
             
             chunk = uef_files[index][0]
             name, load, exec_, block_data, this, flags = info = read_block(chunk)
+            load = load & 0xffff
+            
+            if decomp_addr is not None:
+                load = decomp_addr
             
             # Concatenate the raw data from all the chunks in the file.
             raw_data = ""
@@ -259,6 +269,8 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
                         triggers.append(address + len(header) - 1)
                         
                         address += len(header)
+                        
+                        # Adjust the load address for the rest of the file.
                         load += len(raw_data_written)
                     
                     # Add pending blocks to the list of files, add an address
@@ -449,7 +461,6 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
                     if last:
                         next_address = file_addresses.pop(0)
                         block_info.raw_length = length
-                        file_details.append((name, load, block_info))
                         length = 0
                         
                         if this == 0:
@@ -491,55 +502,53 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
         
             os.write(tf, "\n; Compressed data\n")
             
-            if bootable and rom == roms[0]:
-                file_details.pop(0)
-            
-            while len(decomp_addrs) < len(file_details):
-                decomp_addrs.append(None)
-            
             addresses = []
-            for info, addr, decomp_addr in zip(file_details, triggers, decomp_addrs):
+            for info in file_details:
             
                 # Unpack the file information.
-                name, load_addr, block_info = info
+                name, decomp_addr, block_info = info
                 
                 src_label = "src_%x" % id(block_info)
                 
-                if decomp_addr is None:
-                    decomp_addr = load_addr
+                if decomp_addr != "x":
                 
-                decomp_addr = decomp_addr & 0xffff
-                addresses.append((name, addr, src_label, decomp_addr, decomp_addr + block_info.raw_length))
-                
-                os.write(tf, "\n; %s\n" % repr(name)[1:-1])
-                os.write(tf, src_label + ":\n")
-                os.write(tf, format_data(block_info.data))
+                    addr = triggers.pop(0)
+                    decomp_addr = decomp_addr & 0xffff
+                    addresses.append((name, addr, src_label, decomp_addr, decomp_addr + block_info.raw_length))
+                    
+                    os.write(tf, "\n; %s\n" % repr(name)[1:-1])
+                    os.write(tf, src_label + ":\n")
+                    os.write(tf, format_data(block_info.data))
             
             #os.write(tf, "\n.alias debug %i" % (49 + roms.index(rom)))
             os.write(tf, "\n.alias after_triggers %i\n" % (len(triggers) * 2))
             os.write(tf, "\ntriggers:\n")
             
             for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
-                os.write(tf, ".byte $%02x, $%02x ; %s\n" % (addr & 0xff, addr >> 8, repr(name)[1:-1]))
+                if decomp_addr != "x":
+                    os.write(tf, ".byte $%02x, $%02x ; %s\n" % (addr & 0xff, addr >> 8, repr(name)[1:-1]))
             
             os.write(tf, "\nsrc_addresses:\n")
             
             for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
-                os.write(tf, ".byte <%s, >%s ; source address\n" % (src_label, src_label))
+                if decomp_addr != "x":
+                    os.write(tf, ".byte <%s, >%s ; source address\n" % (src_label, src_label))
             
             os.write(tf, "\ndest_addresses:\n")
             
             for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
-                os.write(tf, ".byte $%02x, $%02x ; decompression start address\n" % (decomp_addr & 0xff, decomp_addr >> 8))
+                if decomp_addr != "x":
+                    os.write(tf, ".byte $%02x, $%02x ; decompression start address\n" % (decomp_addr & 0xff, decomp_addr >> 8))
             
             os.write(tf, "\ndest_end_addresses:\n")
             
             for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
-                os.write(tf, ".byte $%02x, $%02x ; decompression end address\n" % (decomp_end_addr & 0xff, decomp_end_addr >> 8))
+                if decomp_addr != "x":
+                    os.write(tf, ".byte $%02x, $%02x ; decompression end address\n" % (decomp_end_addr & 0xff, decomp_end_addr >> 8))
             
             os.write(tf, "\n")
             
-            decomp_addrs = decomp_addrs[len(triggers):]
+            decomp_addrs = decomp_addrs[len(file_details):]
         
         os.close(tf)
         if os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file)) != 0:
@@ -601,7 +610,7 @@ def find_option(args, label, number = 0):
     return True, values
 
 def usage():
-    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-p] [-t] [-w <workspace>] [-l])] [-s] [-b [-a] [-r|-x]] [-c] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
+    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-p] [-t] [-w <workspace>] [-l])] [-s] [-b [-a] [-r|-x]] [-c1] [-c2] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
     sys.stderr.write(
         "The file indices can be given as a comma-separated list and can include\n"
         "hyphen-separated ranges of indices.\n\n"
@@ -628,9 +637,8 @@ def usage():
         "The -x option indicates that *EXEC is used to execute the first file.\n\n"
         "The -c option is used to indicate that files should be compressed, and is used\n"
         "to supply information about the location in memory where they should be\n"
-        "decompressed. The colon-separated list that follows specifies the load\n"
-        "addresses of the files. Note that this option is not well-tested and can\n"
-        "only be used to create single ROM files.\n"
+        "decompressed. This is followed by colon-separated lists of load addresses,\n"
+        "themselves separated using slashes.\n\n"
         )
     sys.exit(1)
 
@@ -737,17 +745,23 @@ if __name__ == "__main__":
         compress_files, hints = find_option(args, "-c", 1)
         
         if compress_files:
-            # -c [<addr0>]:[<addr1>]:...:[<addrN>]
+            # -c [<addr0>]:[<addr1>]:...:[<addrN>];[<addrN+1>]:...:[<addrM>]
             decomp_addrs = []
-            for addr in hints.split(":"):
-                if addr:
-                    decomp_addrs.append(int(addr, 16))
-                else:
-                    decomp_addrs.append(None)
+            for i, addr_list in enumerate(hints.split("/")):
             
-            details[0]["decode code"] = details[1]["decode code"] = open("asm/dp_decode.oph").read()
-            details[0]["trigger check"] = details[1]["trigger check"] = "jsr trigger_check\n"
-            details[0]["trigger routine"] = details[1]["trigger routine"] = open("asm/trigger_check.oph").read()
+                decomp_addrs.append([])
+                
+                for addr in addr_list.split(":"):
+                    if addr == "x":
+                        decomp_addrs[-1].append("x")
+                    elif addr:
+                        decomp_addrs[-1].append(int(addr, 16))
+                    else:
+                        decomp_addrs[-1].append(None)
+                
+                details[i]["decode code"] = open("asm/dp_decode.oph").read()
+                details[i]["trigger check"] = "jsr trigger_check\n"
+                details[i]["trigger routine"] = open("asm/trigger_check.oph").read()
         else:
             decomp_addrs = []
         
