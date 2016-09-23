@@ -120,7 +120,8 @@ def write_block(u, name, load, exec_, data, n, flags, address):
     
     return out
 
-def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files):
+def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
+                   rom_files):
 
     uef_files = []
     chunks = []
@@ -312,6 +313,11 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
                     if this == 0:
                         file_addresses.append(address)
                     
+                    if details[r]["decode code"] == "":
+                        sys.stderr.write("Cannot write compressed data for %s to ROM "
+                            "without compression support.\n" % repr(name))
+                        sys.exit(1)
+                
                     blocks.append(Compressed(cdata, info, len(raw_data)))
                     triggers.append(address + len(header) - 1)
                     
@@ -871,7 +877,7 @@ if __name__ == "__main__":
     
     convert_chunks(u, indices, decomp_addrs, [data_address, minimal_data_address],
         [header_template % details[0], minimal_header_template % details[1]],
-        rom_files)
+        details, rom_files)
     
     for rom_file in rom_files:
     
