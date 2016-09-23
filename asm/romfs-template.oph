@@ -82,8 +82,6 @@ exit:
 
 read_byte_command:
     pha
-    tya
-    bmi os120
 
     lda current_rom
     eor #$ff
@@ -109,18 +107,6 @@ claim1:
     sta [rom_pointer + 1]
 
     jmp claim
-
-os120:
-%(trigger check)s
-    lda current_rom
-    eor #$ff
-    and #$0f
-    cmp current_paged_rom
-    bne exit
-    tay
-    jsr OSRDRM
-    tay
-    jmp claim1
 
 service_command:
 %(service command code)s

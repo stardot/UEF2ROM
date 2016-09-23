@@ -167,7 +167,8 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             # If we inserted a !BOOT file, increment all the indices by 1 and
             # insert the !BOOT file at the start.
             indices = [0] + map(lambda i: i + 1, indices)
-            decomp_addrs[0].insert(0, "x")
+            if decomp_addrs:
+                decomp_addrs[0].insert(0, "x")
     
     roms = []
     files = []
@@ -188,8 +189,10 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
     
         if r < len(decomp_addrs) and decomp_addrs[r]:
             decomp_addr = decomp_addrs[r].pop(0)
-        else:
+        elif decomp_addrs:
             decomp_addr = None
+        else:
+            decomp_addr = "x"
         
         if decomp_addr != "x":
         
@@ -507,6 +510,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
         if triggers:
         
             os.write(tf, "\n; Compressed data\n")
+            os.write(tf, ".alias after_triggers %i\n" % (len(triggers) * 2))
             
             addresses = []
             for info in file_details:
@@ -527,7 +531,6 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                     os.write(tf, format_data(block_info.data))
             
             #os.write(tf, "\n.alias debug %i" % (49 + roms.index(rom)))
-            os.write(tf, "\n.alias after_triggers %i\n" % (len(triggers) * 2))
             os.write(tf, "\ntriggers:\n")
             
             for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:

@@ -79,8 +79,6 @@ exit:
 
 read_byte_command:
     pha
-    tya
-    bmi os120
 
     lda current_rom
     eor #$ff
@@ -102,18 +100,6 @@ claim1:
 %(second rom bank pointer sync code)s
 
     jmp claim
-
-os120:
-%(trigger check)s
-    lda current_rom
-    eor #$ff
-    and #$0f
-    cmp current_paged_rom
-    bne exit
-    tay
-    jsr OSRDRM
-    tay
-    jmp claim1
 
 rom_command:
 
