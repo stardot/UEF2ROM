@@ -185,7 +185,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, rom_files)
     
     for i, index in enumerate(indices):
     
-        if decomp_addrs[r]:
+        if r < len(decomp_addrs) and decomp_addrs[r]:
             decomp_addr = decomp_addrs[r].pop(0)
         else:
             decomp_addr = None
@@ -750,18 +750,22 @@ if __name__ == "__main__":
             for i, addr_list in enumerate(hints.split("/")):
             
                 decomp_addrs.append([])
+                do_compression = False
                 
                 for addr in addr_list.split(":"):
                     if addr == "x":
                         decomp_addrs[-1].append("x")
                     elif addr:
                         decomp_addrs[-1].append(int(addr, 16))
+                        do_compression = True
                     else:
                         decomp_addrs[-1].append(None)
+                        do_compression = True
                 
-                details[i]["decode code"] = open("asm/dp_decode.oph").read()
-                details[i]["trigger check"] = "jsr trigger_check\n"
-                details[i]["trigger routine"] = open("asm/trigger_check.oph").read()
+                if do_compression:
+                    details[i]["decode code"] = open("asm/dp_decode.oph").read()
+                    details[i]["trigger check"] = "jsr trigger_check\n"
+                    details[i]["trigger routine"] = open("asm/trigger_check.oph").read()
         else:
             decomp_addrs = []
         
