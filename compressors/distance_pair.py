@@ -291,9 +291,9 @@ if __name__ == "__main__":
         sys.stderr.write("Usage: %s --compress|--decompress [--output|--compressed] [--merge] <input file> <output file>\n" % sys.argv[0])
         sys.exit(1)
     
-    command = sys.argv[1]
-    in_f = open(sys.argv[2])
-    out_f = open(sys.argv[3], "w")
+    command = args[1]
+    in_f = open(args[2])
+    out_f = open(args[3], "w")
     
     data = map(ord, in_f.read())
     

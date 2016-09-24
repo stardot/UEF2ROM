@@ -187,10 +187,11 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
     
     for i, index in enumerate(indices):
     
-        if r < len(decomp_addrs) and decomp_addrs[r]:
-            decomp_addr = decomp_addrs[r].pop(0)
-        elif decomp_addrs:
-            decomp_addr = None
+        if r < len(decomp_addrs):
+            if decomp_addrs[r]:
+                decomp_addr = decomp_addrs[r].pop(0)
+            else:
+                decomp_addr = None
         else:
             decomp_addr = "x"
         
@@ -222,12 +223,14 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                 
                 # Compress the raw data.
                 cdata = "".join(map(chr, compress(map(ord, raw_data))))
-                print "Compressed %s from %i to %i bytes." % (repr(name)[1:-1],
-                    len(raw_data), len(cdata))
+                print "Compressed %s from %i to %i bytes at $%x." % (repr(name)[1:-1],
+                    len(raw_data), len(cdata), load)
                 
+                # Calculate the space between the end of the ROM and the
+                # current address, leaving room for an end of ROM marker.
                 remaining = end_address - address - 1
                 
-                if remaining <= len(header) + 8 + len(cdata):
+                if remaining < len(header) + 8 + len(cdata):
                 
                     # The file won't fit into the current ROM. Either put it in a
                     # new one, or split it and put the rest of the file there.
@@ -327,6 +330,9 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                     address += len(header)
                     raw_data = ""
             
+            files.append(blocks)
+            blocks = []
+            
             # Examine the next file.
             continue
         
@@ -350,7 +356,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             if this == 0:
                 file_addresses.append(address)
             
-            if address + len(block) >= end_address:
+            if address + len(block) > end_address - 1:
             
                 # The block won't fit into the current ROM. Start a new one
                 # and add it there along with the other blocks in the file.
@@ -758,6 +764,9 @@ if __name__ == "__main__":
             decomp_addrs = []
             for i, addr_list in enumerate(hints.split("/")):
             
+                if addr_list.strip() == "":
+                    continue
+                
                 decomp_addrs.append([])
                 do_compression = False
                 
