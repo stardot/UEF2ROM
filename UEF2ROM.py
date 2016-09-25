@@ -252,6 +252,10 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                         while end > 2 and special in cdata[end-2:end]:
                             end -= 1
                         
+                        if end == 2:
+                            sys.stderr.write("Failed to split compressed data for %s.\n" % repr(name))
+                            sys.exit(1)
+                        
                         cdata = cdata[:end]
                         raw_data_written = decompress(map(ord, cdata))
                         
@@ -625,9 +629,9 @@ def find_option(args, label, number = 0):
     return True, values
 
 def usage():
-    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-p] [-t] [-w <workspace>] [-l])] [-s] [-b [-a] [-r|-x]] [-c1] [-c2] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
+    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-p] [-t] [-w <workspace>] [-l])] [-s] [-b [-a] [-r|-x]] [-c <load addresses>] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
     sys.stderr.write(
-        "The file indices can be given as a comma-separated list and can include\n"
+        "The file indices can be given as a colon-separated list and can include\n"
         "hyphen-separated ranges of indices.\n\n"
         "The first ROM image can be specified to be a minimal ROM with the -m option.\n"
         "Otherwise, it will contain code to use a persistent ROM pointer.\n"
@@ -705,7 +709,7 @@ if __name__ == "__main__":
     try:
         f, files = find_option(args, "-f", 1)
         if f:
-            pieces = files.split(",")
+            pieces = files.split(":")
             for piece in pieces:
                 if "-" in piece:
                     begin, end = piece.split("-")
