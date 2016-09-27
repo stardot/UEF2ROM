@@ -168,7 +168,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             # insert the !BOOT file at the start.
             indices = [0] + map(lambda i: i + 1, indices)
             if decomp_addrs:
-                decomp_addrs[0].insert(0, "x")
+                decomp_addrs[0].insert(0, ("x", None))
     
     roms = []
     files = []
@@ -189,11 +189,12 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
     
         if r < len(decomp_addrs):
             if decomp_addrs[r]:
-                decomp_addr = decomp_addrs[r].pop(0)
+                decomp_addr, execution_addr = decomp_addrs[r].pop(0)
             else:
-                decomp_addr = None
+                decomp_addr = execution_addr = None
         else:
             decomp_addr = "x"
+            execution_addr = None
         
         if decomp_addr != "x":
         
@@ -207,6 +208,9 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             
             if decomp_addr is not None:
                 load = decomp_addr
+            
+            if execution_addr is not None:
+                exec_ = execution_addr
             
             # Concatenate the raw data from all the chunks in the file.
             raw_data = ""
@@ -764,7 +768,7 @@ if __name__ == "__main__":
         compress_files, hints = find_option(args, "-c", 1)
         
         if compress_files:
-            # -c [<addr0>]:[<addr1>]:...:[<addrN>];[<addrN+1>]:...:[<addrM>]
+            # -c [<addr0>.[<exec0>]]:...:[<addrN>.[<execN>]];[<addrN+1>.[<execN+1>]]:...:[<addrM>.[<execM>]]
             decomp_addrs = []
             for i, addr_list in enumerate(hints.split("/")):
             
@@ -774,14 +778,20 @@ if __name__ == "__main__":
                 decomp_addrs.append([])
                 do_compression = False
                 
-                for addr in addr_list.split(":"):
+                for addrs in addr_list.split(":"):
+                    if "." in addrs:
+                        addr, execute = addrs.split(".")
+                        execute = int(execute, 16)
+                    else:
+                        addr, execute = addrs, None
+                    
                     if addr == "x":
-                        decomp_addrs[-1].append("x")
+                        decomp_addrs[-1].append(("x", execute))
                     elif addr:
-                        decomp_addrs[-1].append(int(addr, 16))
+                        decomp_addrs[-1].append((int(addr, 16), execute))
                         do_compression = True
                     else:
-                        decomp_addrs[-1].append(None)
+                        decomp_addrs[-1].append((None, execute))
                         do_compression = True
                 
                 if do_compression:
