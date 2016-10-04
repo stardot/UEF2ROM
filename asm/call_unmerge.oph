@@ -1,0 +1,2 @@
+    cpy #1
+    beq decompress_unmerge  ; Decompress then unmerge the data.

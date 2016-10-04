@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import commands, os, stat, struct, sys, tempfile
 from tools import UEFfile
-from compressors.distance_pair import compress, decompress
+from compressors.distance_pair import compress, decompress, merge, unmerge
 
 header_template_file = "asm/romfs-template.oph"
 minimal_header_template_file = "asm/romfs-minimal-template.oph"
@@ -51,9 +51,10 @@ class Block:
 
 class Compressed(Block):
 
-    def __init__(self, data, info, raw_length):
+    def __init__(self, data, info, raw_length, merged):
         Block.__init__(self, data, info)
         self.raw_length = raw_length
+        self.merged = merged
 
 def format_data(data):
 
@@ -226,9 +227,23 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                 header = write_block(u, name, load, exec_, "", this, 0x80, 0)
                 
                 # Compress the raw data.
-                cdata = "".join(map(chr, compress(map(ord, raw_data))))
-                print "Compressed %s from %i to %i bytes at $%x." % (repr(name)[1:-1],
-                    len(raw_data), len(cdata), load)
+                raw_data_list = map(ord, raw_data)
+                cdata_not_merged = "".join(map(chr, compress(raw_data_list)))
+                merged = False
+                
+                if details[r]["unmerge code"] != "":
+                    cdata_merged = "".join(map(chr, compress(merge(raw_data_list))))
+                    
+                    if len(cdata_merged) < len(cdata_not_merged):
+                        merged = True
+                        cdata = cdata_merged
+                
+                if not merged:
+                    cdata = cdata_not_merged
+                
+                print "Compressed %s from %i to %i bytes at $%x%s." % (repr(name)[1:-1],
+                    len(raw_data), len(cdata), load,
+                    {False: "", True: " (merged instead of %i bytes unmerged)" % len(cdata_not_merged)}[merged])
                 
                 # Calculate the space between the end of the ROM and the
                 # current address, leaving room for an end of ROM marker.
@@ -261,12 +276,15 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                             sys.exit(1)
                         
                         cdata = cdata[:end]
-                        raw_data_written = decompress(map(ord, cdata))
+                        raw_data_written = len(decompress(map(ord, cdata)))
+                        # We don't need to unmerge the data because we only
+                        # need to know the length of it and, in any case, we
+                        # need all the data to unmerge it correctly.
                         
                         # Discard the raw data that has been handled.
-                        raw_data = raw_data[len(raw_data_written):]
+                        raw_data = raw_data[raw_data_written:]
                         print "Writing %i bytes, leaving %i to be written." % (
-                            len(raw_data_written), len(raw_data))
+                            raw_data_written, len(raw_data))
                         
                         # Update the header to indicate that this block is not
                         # the last.
@@ -279,14 +297,14 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                         # Add information about the truncated block to the list
                         # of blocks, update the block number and record the
                         # trigger address.
-                        blocks.append(Compressed(cdata, info, len(raw_data_written)))
+                        blocks.append(Compressed(cdata, info, raw_data_written, merged))
                         this += 1
                         triggers.append(address + len(header) - 1)
                         
                         address += len(header)
                         
                         # Adjust the load address for the rest of the file.
-                        load += len(raw_data_written)
+                        load += raw_data_written
                     
                     # Add pending blocks to the list of files, add an address
                     # for the end of ROMFS marker, and clear the list of blocks.
@@ -332,7 +350,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                             "without compression support.\n" % repr(name))
                         sys.exit(1)
                 
-                    blocks.append(Compressed(cdata, info, len(raw_data)))
+                    blocks.append(Compressed(cdata, info, len(raw_data), merged))
                     triggers.append(address + len(header) - 1)
                     
                     address += len(header)
@@ -538,7 +556,8 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                 
                     addr = triggers.pop(0)
                     decomp_addr = decomp_addr & 0xffff
-                    addresses.append((name, addr, src_label, decomp_addr, decomp_addr + block_info.raw_length))
+                    addresses.append((name, addr, src_label, decomp_addr,
+                        decomp_addr + block_info.raw_length, merged))
                     
                     os.write(tf, "\n; %s\n" % repr(name)[1:-1])
                     os.write(tf, src_label + ":\n")
@@ -547,25 +566,30 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             #os.write(tf, "\n.alias debug %i" % (49 + roms.index(rom)))
             os.write(tf, "\ntriggers:\n")
             
-            for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
+            for name, addr, src_label, decomp_addr, decomp_end_addr, merged in addresses:
                 if decomp_addr != "x":
                     os.write(tf, ".byte $%02x, $%02x ; %s\n" % (addr & 0xff, addr >> 8, repr(name)[1:-1]))
             
             os.write(tf, "\nsrc_addresses:\n")
             
-            for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
+            for name, addr, src_label, decomp_addr, decomp_end_addr, merged in addresses:
                 if decomp_addr != "x":
                     os.write(tf, ".byte <%s, >%s ; source address\n" % (src_label, src_label))
             
             os.write(tf, "\ndest_addresses:\n")
             
-            for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
+            for name, addr, src_label, decomp_addr, decomp_end_addr, merged in addresses:
                 if decomp_addr != "x":
+                    # If the compressed data needs to be unmerged after
+                    # decompression then set the top bit. This bit should never
+                    # be set otherwise.
+                    if merged:
+                        decomp_addr = decomp_addr | 0x8000
                     os.write(tf, ".byte $%02x, $%02x ; decompression start address\n" % (decomp_addr & 0xff, decomp_addr >> 8))
             
             os.write(tf, "\ndest_end_addresses:\n")
             
-            for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
+            for name, addr, src_label, decomp_addr, decomp_end_addr, merged in addresses:
                 if decomp_addr != "x":
                     os.write(tf, ".byte $%02x, $%02x ; decompression end address\n" % (decomp_end_addr & 0xff, decomp_end_addr >> 8))
             
@@ -662,6 +686,8 @@ def usage():
         "to supply information about the location in memory where they should be\n"
         "decompressed. This is followed by colon-separated lists of load addresses,\n"
         "themselves separated using slashes.\n\n"
+        "Use -cm to suggest merging/manipulating data in order to make it more amenable\n"
+        "to compression.\n\n"
         )
     sys.exit(1)
 
@@ -694,7 +720,10 @@ if __name__ == "__main__":
          "second rom bank pointer sync code": "",
          "decode code": "",
          "trigger check": "",
-         "trigger routine": ""},
+         "trigger routine": "",
+         "trigger check unmerge": "",
+         "set unmerge": "",
+         "unmerge code": ""},
         {"title": "Test ROM",
          "version string": "1.0",
          "version": 1,
@@ -707,7 +736,10 @@ if __name__ == "__main__":
          "second rom bank pointer sync code": "",
          "decode code": "",
          "trigger check": "",
-         "trigger routine": ""},
+         "trigger routine": "",
+         "trigger check unmerge": "",
+         "set unmerge": "",
+         "unmerge code": ""}
         ]
     
     try:
@@ -766,6 +798,7 @@ if __name__ == "__main__":
         star_run = find_option(args, "-r", 0)
         star_exec = find_option(args, "-x", 0)
         compress_files, hints = find_option(args, "-c", 1)
+        compress_merge = find_option(args, "-cm", 0)
         
         if compress_files:
             # -c [<addr0>.[<exec0>]]:...:[<addrN>.[<execN>]];[<addrN+1>.[<execN+1>]]:...:[<addrM>.[<execM>]]
@@ -794,10 +827,15 @@ if __name__ == "__main__":
                         decomp_addrs[-1].append((None, execute))
                         do_compression = True
                 
+                if compress_merge:
+                    details[i]["trigger check unmerge"] = open("asm/call_unmerge.oph").read()
+                    details[i]["set unmerge"] = open("asm/set_unmerge.oph").read()
+                    details[i]["unmerge code"] = open("asm/unmerge_code.oph").read()
+                
                 if do_compression:
                     details[i]["decode code"] = open("asm/dp_decode.oph").read()
-                    details[i]["trigger check"] = "jsr trigger_check\n"
-                    details[i]["trigger routine"] = open("asm/trigger_check.oph").read()
+                    details[i]["trigger check"] = open("asm/call_trigger_check.oph").read()
+                    details[i]["trigger routine"] = open("asm/trigger_check.oph").read() % details[i]
         else:
             decomp_addrs = []
         
@@ -901,6 +939,7 @@ if __name__ == "__main__":
     
     u = UEFfile.UEFfile(uef_file)
     
+    # Convert the chunks in the UEF file to data for the ROM files specified.
     convert_chunks(u, indices, decomp_addrs, [data_address, minimal_data_address],
         [header_template % details[0], minimal_header_template % details[1]],
         details, rom_files)

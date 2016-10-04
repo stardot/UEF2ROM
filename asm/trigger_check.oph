@@ -2,9 +2,6 @@ trigger_check:
 
     ; Compare the exported ROM pointer to the triggers.
 
-    txa         ; Save X for later.
-    pha
-
     ldx #after_triggers ; Set X to refer to the address after the trigger array.
 
     trigger_check_loop:
@@ -29,11 +26,22 @@ trigger_check:
 
     trigger_exit:
 
-    pla         ; Restore X.
-    tax
     rts
 
 trigger_start_decompression:
+
+    jsr load_decompression_addresses
+
+%(trigger check unmerge)s
+
+    jsr decompress          ; Call the decompression routine.
+
+    rts
+
+load_decompression_addresses:
+
+    ldy #0                  ; Use the Y register as a way of indicating whether
+                            ; decompressed data needs to be unmerged.
 
     lda src_addresses,x     ; Read the source address into the addresses used
     sta src_low             ; for the source address in the decompression
@@ -46,6 +54,8 @@ trigger_start_decompression:
     sta dest_low            ; used for the destination and ending addresses.
     inx
     lda dest_addresses,x
+%(set unmerge)s
+
     sta dest_high
     dex
 
@@ -55,8 +65,6 @@ trigger_start_decompression:
     lda dest_end_addresses,x
     sta end_high
 
-    jsr decompress          ; Call the decompression routine.
-
-    pla                     ; Restore X.
-    tax
     rts
+
+%(unmerge code)s

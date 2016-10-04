@@ -32,6 +32,8 @@ def compress(data, window = "output"):
             
             # Find better matches, replacing those of equal length with later
             # ones as they are found.
+            offset = calculate_offset(i, b, output, window)
+            
             if len(match) >= len(best):
                 best = match
                 b = k
@@ -65,10 +67,7 @@ def compress(data, window = "output"):
             # special 0llloooo          -> length (3-10), offset (1-15)
             # special 1ooooooo llllllll -> offset (1-128), length (4-259)
             
-            if window == "output":
-                offset = i - b
-            else:
-                offset = len(output) - b
+            offset = calculate_offset(i, b, output, window)
             
             if length < 11 and offset < 16:
                 # Store non-zero offset to avoid potential encoding of zero
@@ -166,6 +165,14 @@ def find_match_in_compressed(output, data, k, i):
     return match
 
 
+def calculate_offset(i, b, output, window):
+
+    if window == "output":
+        return i - b
+    else:
+        return len(output) - b
+
+
 def decompress(data, window = "output", stop_at = None):
 
     special = data[0]
@@ -256,6 +263,73 @@ def unmerge(data):
     
     if len(data) % 2 == 1:
         output.append(data[-1])
+    
+    data_ = data[:]
+    
+    
+    
+    if data_ != output:
+        raise ValueError
+    
+    return output
+
+def unmerge2(data):
+
+    output = data[:]
+    
+    i = 0
+    j = hl
+    while i < hl:
+        di = output[i]
+        dj = output[j]
+        if i % 2 == 0:
+            output[i] = (di & 0x0f) | (dj & 0xf0)
+            output[j] = ((di & 0xf0) >> 4) | ((dj & 0x0f) << 4)
+        else:
+            output[i] = ((di & 0xf0) >> 4) | ((dj & 0x0f) << 4)
+            output[j] = (di & 0x0f) | (dj & 0xf0)
+        i += 1
+        j += 1
+    
+    j = 1
+    while j < hl:
+        dj = output[j]
+        di = output[i]
+        output[i] = dj
+        output[j] = di
+        i += 1
+        j += 1
+    
+    return output
+
+def unmerge3(data):
+
+    output = data[:]
+    
+    i = 0
+    j = hl
+    while i < hl:
+        di = output[i]
+        dj = output[j]
+        output[i] = (di & 0x0f) | (dj & 0xf0)
+        output[j] = ((di & 0xf0) >> 4) | ((dj & 0x0f) << 4)
+        i += 1
+        j += 1
+    
+    k = 1
+    while k < hl:
+        
+        i = k
+        j = hl
+        while i < hl:
+            di = output[i]
+            dj = output[j]
+            output[i] = dj
+            output[j] = di
+            i += 1
+            j += 1
+        
+        k += 1
     
     return output
 

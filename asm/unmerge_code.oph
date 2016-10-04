@@ -1,0 +1,136 @@
+; See dp_decode.oph for equivalent aliases.
+
+.alias mid      $90
+.alias mid_low  $90
+.alias mid_high $91
+
+.alias temp1    $96
+.alias temp2    $97
+.alias _low_    $98
+.alias _high_   $99
+
+decompress_unmerge:
+
+    txa                     ; Save the X register so that we can load the
+    pha                     ; destination addresses again.
+
+    jsr decompress
+
+    pla
+    tax
+
+    jsr load_decompression_addresses
+
+    ; Perform unmerging from the decompression address to the end of the
+    ; decompressed data.
+
+    jsr midpoint
+
+    ldy #0
+    unmerge_loop1:
+        lda (dest),y        ; BlAl
+        sta temp2
+        and #$0f
+        sta temp1         ; 00Al
+        lda (mid),y         ; AhBh
+        and #$f0            ; Ah00
+        ora temp1         ; AhAl
+        sta (dest),y
+
+        lda temp2        ; BlAl
+        and #$f0            ; Bl00
+        lsr
+        lsr
+        lsr
+        lsr                 ; 00Bl
+        sta temp1
+        lda (mid),y         ; AhBh
+        and #$0f
+        asl
+        asl
+        asl
+        asl                 ; Bh00
+        ora temp1         ; BhBl
+        sta (mid),y
+
+        inc dest_low
+        bne unmerge_loop1_next1
+        inc dest_high
+
+        unmerge_loop1_next1:
+        inc mid_low
+        bne unmerge_loop1_next2
+        inc mid_high
+
+        unmerge_loop1_next2:
+        
+
+    rts
+
+midpoint:
+
+    sec
+    lda end_low
+    sbc dest_low
+    sta mid_low
+    lda end_high
+    sbc dest_high
+    sta mid_high
+    clc
+
+    lda dest_low
+    adc mid_low
+    sta mid_low
+    lda dest_high
+    adc mid_high
+    sta mid_high
+
+    rts
+
+; Ah Bh Ch Dh Eh Fh (original)
+; Al Bl Cl Dl El Fl
+
+; Bl Dl Fl Ah Ch Eh (merged)
+; Al Cl El Bh Dh Fh
+; ^________^
+;    ^........^
+;       ^........^
+
+; Ah Dh Eh Bh Ch Fh (interleaved)
+; Al Dl El Bl Cl Fl
+;    ^_____^
+;       ^.....^
+
+
+; Ah Bh Ch Dh Eh Fh (original)
+; Al Bl Cl Dl El Fl
+
+; Bl Dl Fl Ah Ch Eh (merged)
+; Al Cl El Bh Dh Fh
+; ^________^
+;    ^........^
+;       ^........^
+
+; Ah Dl Eh Bl Ch Fl
+; Al Dh El Bh Cl Fh
+;    ^_____^
+;       ^.....^
+
+; Ah Bl Ch Dl Eh Fl
+; Al Bh Cl Dh El Fh
+
+
+; Ah Bh Ch Dh Eh Fh (original)
+; Al Bl Cl Dl El Fl
+
+; Bl Dl Fl Ah Ch Eh (merged)
+; Al Cl El Bh Dh Fh
+; ^________^
+;    ^........^
+;       ^........^
+
+; Ah Ch Eh Bl Dl Fl
+; Al Cl El Bh Dh Fh
+;    ^_____^
+;   |   ^.....^ |
+;      |^..^ |

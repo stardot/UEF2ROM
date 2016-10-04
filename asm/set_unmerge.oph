@@ -1,0 +1,7 @@
+    cmp #$80
+    bcc store_dest_high
+
+    ldy #1                  ; The decompressed data needs to be unmerged.
+    and #$7f                ; Clear the top bit.
+
+    store_dest_high:
