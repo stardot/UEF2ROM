@@ -134,3 +134,15 @@ midpoint:
 ;    ^_____^
 ;   |   ^.....^ |
 ;      |^..^ |
+
+
+; Ah Bh Ch Dh | Eh Fh Gh Hh
+; Al Bl Cl Dl | El Fl Gl Hl
+
+; vv    vv         vv    vv
+; Bl Dl Fl Hl | Ah Ch Eh Gh
+; Al Cl El Gl | Bh Dh Fh Hh
+;    ^^    ^^   ^^    ^^
+
+; Cl Dl Gl Hl | Ah Bh Eh Fh
+; Al Bl El Fl | Ch Dh Gh Hh
