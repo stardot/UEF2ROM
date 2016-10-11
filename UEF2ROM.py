@@ -153,7 +153,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             sys.exit(1)
         
         boot_code = open(temp_boot_file, "rb").read()
-        #os.remove(temp_oph_file)
+        os.remove(temp_oph_file)
         os.remove(temp_boot_file)
         
         if boot_code:
