@@ -24,25 +24,6 @@ from compressors.distance_pair import compress, decompress
 header_template_file = "asm/romfs-template.oph"
 minimal_header_template_file = "asm/romfs-minimal-template.oph"
 
-boot_code = [
-    "\xa9\x8a",     # lda #$8a
-    "\xa2\x00",     # ldx #0    (keyboard buffer)
-    "\xa0\x89",     # ldy #$89  (fn key 9)
-    "\x20\xf4\xff", # jsr $fff4 (OSBYTE 8a - insert character into buffer)
-    "\xa2\x29",     # ldx #$1d
-    "\xa0\x19",     # ldy #$19
-    "\x20\xf7\xff", # jsr $fff7 (OSCLI - KEY9 <command>|M)
-    "\xa2\x24",     # ldx #$17  
-    "\xa0\x19",     # ldy #$19
-    "\x20\xf7\xff", # jsr $fff7 (OSCLI - ROM)
-    "\xa2\x1e",     # ldx #$17  
-    "\xa0\x19",     # ldy #$19
-    "\x4c\xf7\xff", # jmp $fff7 (OSCLI - BASIC)
-    "BASIC\r",
-    "*ROM\r",
-    'KEY9 %s|M\r',
-    ]
-
 class Block:
 
     def __init__(self, data, info):
@@ -154,15 +135,29 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
         # Ideally, we could drop the !BOOT file if the first file should be
         # *RUN, but it seems that we may need to select the ROM filing system
         # again after entering BASIC.
-        if star_run:
-            code = ''.join(boot_code) % ("*/%s" % names[indices[0]])
-        elif star_exec:
-            code = ''.join(boot_code) % ('*EXEC"%s"' % names[indices[0]])
-        else:
-            code = ''.join(boot_code) % ('CHAIN"%s"' % names[indices[0]])
         
-        if code:
-            uef_files.insert(0, [write_block(u, "!BOOT", 0x1900, 0x1900, code, 0, 0x80, 0)])
+        if star_run:
+            details[0]["run first file"] = ('"*/%s"' % names[indices[0]])
+        elif star_exec:
+            details[0]["run first file"] = ('"*EXEC", 34, "%s", 34' % names[indices[0]])
+        else:
+            details[0]["run first file"] = ('"CHAIN", 34, "%s", 34' % names[indices[0]])
+        
+        tof, temp_oph_file = tempfile.mkstemp(suffix=os.extsep+'oph')
+        tf, temp_boot_file = tempfile.mkstemp(suffix=os.extsep+'boot')
+        
+        boot_file_text = open("asm/file_boot_code.oph").read() % details[0]
+        os.write(tof, boot_file_text)
+        
+        if os.system("ophis -o " + commands.mkarg(temp_boot_file) + " " + commands.mkarg(temp_oph_file)) != 0:
+            sys.exit(1)
+        
+        boot_code = open(temp_boot_file, "rb").read()
+        #os.remove(temp_oph_file)
+        os.remove(temp_boot_file)
+        
+        if boot_code:
+            uef_files.insert(0, [write_block(u, "!BOOT", 0x1900, 0x1900, boot_code, 0, 0x80, 0)])
             
             # If we inserted a !BOOT file, increment all the indices by 1 and
             # insert the !BOOT file at the start.
@@ -429,6 +424,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
     
     # Write the source for each ROM file, containing the appropriate ROM header
     # and the files it contains in its ROMFS structure.
+    r = 0
     
     for header, rom_file, rom in zip(headers, rom_files, roms):
     
@@ -573,11 +569,22 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             
             decomp_addrs = decomp_addrs[len(file_details):]
         
+        elif details[r]["compress"]:
+        
+            # Ideally, we would remove the decompression code and rebuild the ROM.
+            sys.stderr.write("ROM file %s contains unused decompression code.\n" % rom_file)
+            os.write(tf, ".alias after_triggers 0\n")
+            os.write(tf, "triggers:\n")
+            os.write(tf, "src_addresses:\n")
+            os.write(tf, "dest_addresses:\n")
+            os.write(tf, "dest_end_addresses:\n")
+        
         os.close(tf)
         if os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file)) != 0:
             sys.exit(1)
         
         os.remove(temp_file)
+        r += 1
 
 def write_end_marker(tf):
 
@@ -672,6 +679,7 @@ if __name__ == "__main__":
     
     minimal = False
     tape_override = False
+    fscheck_override = False
     workspace = 0xa00
     
     details = [
@@ -684,8 +692,6 @@ if __name__ == "__main__":
          "service boot code": "",
          "boot code": "",
          "init romfs code": "",
-         "call tape init": "",
-         "tape init": "",
          "first rom bank init code": "",
          "first rom bank check code": "",
          "first rom bank behaviour code": "",
@@ -694,7 +700,8 @@ if __name__ == "__main__":
          "second rom bank pointer sync code": "",
          "decode code": "",
          "trigger check": "",
-         "trigger routine": ""},
+         "trigger routine": "",
+         "compress": False},
         {"title": "Test ROM",
          "version string": "1.0",
          "version": 1,
@@ -707,7 +714,8 @@ if __name__ == "__main__":
          "second rom bank pointer sync code": "",
          "decode code": "",
          "trigger check": "",
-         "trigger routine": ""},
+         "trigger routine": "",
+         "compress": False},
         ]
     
     try:
@@ -728,8 +736,10 @@ if __name__ == "__main__":
         else:
             header_template = open(header_template_file).read()
         
+        tape_override = find_option(args, "-t", 0)
+        fscheck_override = find_option(args, "-T", 0)
+        
         if not minimal:
-            tape_override = find_option(args, "-t", 0)
             
             w, workspace = find_option(args, "-w", 1)
             if w:
@@ -755,7 +765,7 @@ if __name__ == "__main__":
             loop = find_option(args, "-l", 0)
         
         else:
-            if find_option(args, "-t", 0):
+            if tape_override or fscheck_override:
                 sys.stderr.write("Cannot override *TAPE in minimal ROMs.\n")
                 sys.exit(1)
         
@@ -798,6 +808,7 @@ if __name__ == "__main__":
                     details[i]["decode code"] = open("asm/dp_decode.oph").read()
                     details[i]["trigger check"] = "jsr trigger_check\n"
                     details[i]["trigger routine"] = open("asm/trigger_check.oph").read()
+                    details[i]["compress"] = True
         else:
             decomp_addrs = []
         
@@ -887,7 +898,24 @@ if __name__ == "__main__":
         
         details[0]["tape workspace call address"] = tape_workspace_call_address
     else:
+        details[0]["call tape init"] = ""
+        details[0]["tape init"] = ""
         details[0]["tape workspace call address"] = details[0]["tape workspace"]
+    
+    details[0]["argsv"] = workspace_end
+    details[0]["fscheck workspace"] = workspace_end + 2
+    
+    if fscheck_override:
+        details[0]["fscheck init"] = open("asm/fscheck_init.oph").read()
+        details[0]["call fscheck init"] = "    jsr fscheck_init"
+        workspace_end += 17
+        
+        fs_call = details[0]["fscheck workspace call address"] = details[0]["fscheck workspace"]
+    
+    else:
+        details[0]["call fscheck init"] = ""
+        details[0]["fscheck init"] = ""
+        details[0]["fscheck workspace call address"] = 0
     
     print (workspace_end - workspace), "bytes of workspace used."
     
