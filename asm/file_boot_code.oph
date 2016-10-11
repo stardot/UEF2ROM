@@ -1,0 +1,21 @@
+.org $1900
+
+boot_code:
+
+lda #$8a
+ldx #0          ; (keyboard buffer)
+ldy #$89        ; (fn key 9)
+jsr $fff4       ; (OSBYTE 8a - insert character into buffer)
+ldx #<key9_text
+ldy #>key9_text
+jsr $fff7       ; (OSCLI - KEY9 <command>|M)
+ldx #<basic_text
+ldy #>basic_text
+jmp $fff7       ; (OSCLI - BASIC)
+
+basic_text:
+.byte "BASIC", 13
+star_rom_text:
+.byte "*ROM", 13
+key9_text:
+.byte "KEY9 ", %(run first file)s, "|M", 13

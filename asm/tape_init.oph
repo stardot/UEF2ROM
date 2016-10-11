@@ -1,12 +1,15 @@
-    ; Copy the vector handling code into the tape tape_workspace.
+.alias BYTEV $020a
+
+tape_init:
+    ; Copy the vector handling code into the tape_workspace.
 
     ldx #0
-    rom_loop:
+    bytev_rom_loop:
         lda new_bytev,x
         sta tape_workspace,x
         inx
         cpx #[new_bytev_end - new_bytev]
-        bne rom_loop
+        bne bytev_rom_loop
 
     lda BYTEV
     sta old_bytev
