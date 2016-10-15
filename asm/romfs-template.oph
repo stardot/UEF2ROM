@@ -23,19 +23,19 @@ jmp service_entry
 .byte $82       ; 6502 code (2), language ($40), service ($80)
 
 copyright_offset:
-.byte [copyright_string - rom_start - 1]
+%(copyright offset)s
 
 ; Version
-.byte %(version)i
+%(version)s
 
 ; Title string
-.byte "%(title)s", 0
+%(title)s
 
 ; Version string
-.byte "%(version string)s", 0
+%(version string)s
 
 copyright_string:
-.byte "%(copyright)s", 0
+%(copyright)s
 
 service_entry:
 
@@ -48,7 +48,8 @@ service_entry:
     service_entry_exit:
     rts
 
-rom_name: .byte "MGCROM", 13
+rom_name:
+%(rom name)s
 
 init_command:
 
