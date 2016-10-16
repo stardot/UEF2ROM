@@ -310,8 +310,10 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                         print "Splitting %s - moving %i bytes to the next ROM." % (
                             repr(name), len(raw_data))
                         # Ensure that the first block in the new ROM is treated
-                        # as the start of a file.
-                        file_addresses.append(address)
+                        # as the start of a file if it is not already the first
+                        # block in a file.
+                        if this != 0:
+                            file_addresses.append(address)
                     else:
                         print "Moving %s to the next ROM." % repr(name)
                 else:
