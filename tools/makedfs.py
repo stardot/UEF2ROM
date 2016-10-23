@@ -48,11 +48,21 @@ class Catalogue(Utilities):
     
     def read(self):
     
-        disk_title = self._read(0, 8) + self._read(0x100, 4)
-        self.disk_cycle = self._read_unsigned_byte(self._read(0x104, 1))
-        last_entry = self._read_unsigned_byte(self._read(0x105, 1))
-        extra = self._read_unsigned_byte(self._read(0x106, 1))
-        sectors = self._read_unsigned_byte(self._read(0x107, 1))
+        disk_title, files = self.read_catalogue(0)
+        
+        if self.interleaved:
+            other_title, more_files = self.read_catalogue(self.track_size)
+            files += more_files
+        
+        return disk_title, files
+    
+    def read_catalogue(self, offset):
+    
+        disk_title = self._read(offset, 8) + self._read(offset + 0x100, 4)
+        self.disk_cycle = self._read_unsigned_byte(self._read(offset + 0x104, 1))
+        last_entry = self._read_unsigned_byte(self._read(offset + 0x105, 1))
+        extra = self._read_unsigned_byte(self._read(offset + 0x106, 1))
+        sectors = self._read_unsigned_byte(self._read(offset + 0x107, 1))
         self.sectors = sectors | ((extra & 0x03) << 8)
         self.boot_option = (extra & 0x30) >> 4
         
@@ -61,20 +71,20 @@ class Catalogue(Utilities):
         
         while p <= last_entry:
         
-            name = self._read(p, 7)
+            name = self._read(offset + p, 7)
             if name[0] == "\x00":
                 break
             
             name = name.strip()
-            extra = self._read_unsigned_byte(self._read(p + 7))
+            extra = self._read_unsigned_byte(self._read(offset + p + 7))
             prefix = chr(extra & 0x7f)
             locked = (extra & 0x80) != 0
             
-            load = self._read_unsigned_half_word(self._read(0x100 + p, 2))
-            exec_ = self._read_unsigned_half_word(self._read(0x100 + p + 2, 2))
-            length = self._read_unsigned_half_word(self._read(0x100 + p + 4, 2))
+            load = self._read_unsigned_half_word(self._read(offset + 0x100 + p, 2))
+            exec_ = self._read_unsigned_half_word(self._read(offset + 0x100 + p + 2, 2))
+            length = self._read_unsigned_half_word(self._read(offset + 0x100 + p + 4, 2))
             
-            extra = self._read_unsigned_byte(self._read(0x100 + p + 6))
+            extra = self._read_unsigned_byte(self._read(offset + 0x100 + p + 6))
             load = load | ((extra & 0x0c) << 14)
             length = length | ((extra & 0x30) << 12)
             exec_ = exec_ | ((extra & 0xc0) << 10)
@@ -84,11 +94,12 @@ class Catalogue(Utilities):
             if exec_ & 0x30000 == 0x30000:
                 exec_ = exec_ | 0xfc0000
             
-            file_start_sector = self._read_unsigned_byte(self._read(0x100 + p + 7))
+            file_start_sector = self._read_unsigned_byte(self._read(offset + 0x100 + p + 7))
             file_start_sector = file_start_sector | ((extra & 0x03) << 8)
             
             if not self.interleaved:
                 data = self._read(file_start_sector * self.sector_size, length)
+                disk_address = file_start_sector * self.sector_size
             else:
                 data = ""
                 sector = file_start_sector
@@ -96,7 +107,7 @@ class Catalogue(Utilities):
                 
                 while len(data) < length:
                 
-                    addr = self._disk_address(sector)
+                    addr = offset + self._disk_address(sector)
                     data += self._read(addr, min(self.sector_size, length - len(data)))
                     sector += 1
             
