@@ -32,6 +32,9 @@ if __name__ == "__main__":
         sys.exit(1)
     
     cat = makedfs.Catalogue(open(sys.argv[1]))
+    if sys.argv[1].endswith(".dsd"):
+        cat.interleaved = True
+    
     title, disk_files = cat.read()
     
     if len(sys.argv) == 4:

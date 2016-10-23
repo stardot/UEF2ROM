@@ -29,11 +29,14 @@ class Catalogue(Utilities):
     
         self.file = file
         self.sector_size = 256
+        self.track_size = 10 * self.sector_size
+        self.interleaved = False
         
         # The free space map initially contains all the space after the
         # catalogue.
         self.free_space = [(2, 798)]
         self.sectors = 800
+        self.tracks = self.sectors / 10
         self.disk_cycle = 0
         self.boot_option = 0
     
@@ -84,10 +87,21 @@ class Catalogue(Utilities):
             file_start_sector = self._read_unsigned_byte(self._read(0x100 + p + 7))
             file_start_sector = file_start_sector | ((extra & 0x03) << 8)
             
-            data = self._read(file_start_sector * self.sector_size, length)
+            if not self.interleaved:
+                data = self._read(file_start_sector * self.sector_size, length)
+            else:
+                data = ""
+                sector = file_start_sector
+                disk_address = self._disk_address(sector)
+                
+                while len(data) < length:
+                
+                    addr = self._disk_address(sector)
+                    data += self._read(addr, min(self.sector_size, length - len(data)))
+                    sector += 1
             
             files.append(File(prefix + "." + name, data, load, exec_, length, locked,
-                              file_start_sector * self.sector_size))
+                              disk_address))
             
             p += 8
         
@@ -169,6 +183,20 @@ class Catalogue(Utilities):
                 return sector * self.sector_size
         
         raise DiskError, "Failed to find space for file: %s" % file.name
+    
+    def _disk_address(self, sector):
+    
+        track = sector/10
+        addr = 0
+        
+        # Handle some .dsd files with interleaved tracks.
+        if track >= self.tracks:
+            track -= self.tracks
+            addr += self.track_size
+        
+        addr += (track * self.track_size * 2) + ((sector % 10) * self.sector_size)
+        
+        return addr
 
 
 class Disk:
