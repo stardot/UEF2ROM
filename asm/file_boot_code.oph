@@ -15,7 +15,5 @@ jmp $fff7       ; (OSCLI - BASIC)
 
 basic_text:
 .byte "BASIC", 13
-star_rom_text:
-.byte "*ROM", 13
 key9_text:
 .byte "KEY9 ", %(run first file)s, "|M", 13

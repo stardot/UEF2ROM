@@ -16,3 +16,6 @@ the filing system, causing it to finish reading the split file in the second
 ROM, but then returning to the first ROM to look for any following files. If I
 don't either reset the persistent pointer or reject the call, an invalid
 pointer is used and I get a "Bad ROM" error.
+
+See http://stardot.org.uk/forums/viewtopic.php?f=2&t=1095 for a discussion
+about similar tools.
