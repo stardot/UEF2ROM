@@ -1,0 +1,41 @@
+.alias ARGSV $0214
+
+fscheck_init:
+    ; Copy the vector handling code into the fscheck_workspace.
+
+    ldx #0
+    argsv_rom_loop:
+        lda new_argsv,x
+        sta fscheck_workspace,x
+        inx
+        cpx #[new_argsv_end - new_argsv]
+        bne argsv_rom_loop
+
+    lda ARGSV
+    sta old_argsv
+    lda [ARGSV + 1]
+    sta [old_argsv + 1]
+
+    sei
+    lda #<fscheck_workspace_call_address
+    sta ARGSV
+    lda #>fscheck_workspace_call_address
+    sta [ARGSV + 1]
+    cli
+
+    rts
+
+new_argsv:
+    php
+    cmp #0
+    bne to_old_argsv
+    cpy #0
+    bne to_old_argsv
+    report_tape:
+    plp
+    lda #1
+    rts
+    to_old_argsv:
+    plp
+    jmp (old_argsv)
+new_argsv_end:

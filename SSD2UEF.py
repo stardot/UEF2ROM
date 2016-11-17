@@ -61,7 +61,7 @@ if __name__ == "__main__":
         info = (name, file.load_address, file.execution_address, file.data)
         files.append(info)
     
-    u = UEFfile.UEFfile(creator = "ssd2uef.py " + __version__)
+    u = UEFfile.UEFfile(creator = "SSD2UEF.py " + __version__)
     u.minor = 6
     u.target_machine = "Electron"
     u.import_files(0, files, gap = True)
