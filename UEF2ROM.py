@@ -161,7 +161,15 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             
             # If we inserted a !BOOT file, increment all the indices by 1 and
             # insert the !BOOT file at the start.
-            indices = [0] + map(lambda i: i + 1, indices)
+            new_indices = [0]
+            for i in indices:
+                if i == "s":
+                    new_indices.append(i)
+                else:
+                    new_indices.append(i + 1)
+            
+            indices = new_indices
+            
             if decomp_addrs:
                 decomp_addrs[0].insert(0, ("x", None))
     
@@ -182,6 +190,32 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
     
     for i, index in enumerate(indices):
     
+        if index == "s":
+        
+            # Add pending blocks to the list of files, add an address
+            # for the end of ROMFS marker, and clear the list of blocks.
+            files.append(blocks)
+            file_addresses.append(address)
+            blocks = []
+            
+            roms.append((files, file_addresses, triggers))
+            
+            files = []
+            file_addresses = []
+            triggers = []
+            end_address = 0xc000
+            
+            r += 1
+            if r >= len(data_addresses):
+                sys.stderr.write("Not enough ROM files specified.\n")
+                sys.exit(1)
+            
+            # Update the data address from the start of the new ROM's
+            # data area.
+            address = data_addresses[r]
+            
+            continue
+        
         if r < len(decomp_addrs):
             if decomp_addrs[r]:
                 decomp_addr, execution_addr = decomp_addrs[r].pop(0)
@@ -645,7 +679,9 @@ def usage():
     sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-p] [-t] [-w <workspace>] [-l])] [-s] [-b [-a] [-r|-x]] [-c <load addresses>] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
     sys.stderr.write(
         "The file indices can be given as a colon-separated list and can include\n"
-        "hyphen-separated ranges of indices.\n\n"
+        "hyphen-separated ranges of indices. Additionally, a special value of 's' can\n"
+        "be used to indicate the end of a ROM, so that files following this will be\n"
+        "added to a new ROM.\n\n"
         "The first ROM image can be specified to be a minimal ROM with the -m option.\n"
         "Otherwise, it will contain code to use a persistent ROM pointer.\n"
         "The second ROM image will always be minimal, but can be specified to use a\n"
@@ -732,12 +768,15 @@ if __name__ == "__main__":
         if f:
             pieces = files.split(":")
             for piece in pieces:
-                if "-" in piece:
-                    begin, end = piece.split("-")
+                if piece == "s":
+                    indices.append("s")
                 else:
-                    begin = end = piece
-                
-                indices += range(int(begin), int(end) + 1)
+                    if "-" in piece:
+                        begin, end = piece.split("-")
+                    else:
+                        begin = end = piece
+                    
+                    indices += range(int(begin), int(end) + 1)
         
         minimal = find_option(args, "-m", 0)
         if minimal:
@@ -788,6 +827,7 @@ if __name__ == "__main__":
         
         if compress_files:
             # -c [<addr0>.[<exec0>]]:...:[<addrN>.[<execN>]];[<addrN+1>.[<execN+1>]]:...:[<addrM>.[<execM>]]
+            # or use x instead of <addr>.[<exec>]
             decomp_addrs = []
             for i, addr_list in enumerate(hints.split("/")):
             
