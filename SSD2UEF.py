@@ -18,8 +18,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 __author__ = "David Boddie <david@boddie.org.uk>"
-__date__ = "2015-08-23"
-__version__ = "0.1"
+__date__ = "2016-12-12"
+__version__ = "0.2"
 __license__ = "GNU General Public License (version 3 or later)"
 
 import sys
@@ -29,13 +29,35 @@ if __name__ == "__main__":
 
     if not 3 <= len(sys.argv) <= 4:
         sys.stderr.write("Usage: %s <ssd file> <uef file> [file0,...]\n" % sys.argv[0])
+        sys.stderr.write("Usage: %s -l <ssd file>\n" % sys.argv[0])
         sys.exit(1)
     
-    cat = makedfs.Catalogue(open(sys.argv[1]))
-    if sys.argv[1].endswith(".dsd"):
+    if sys.argv[1] == "-l":
+        print_catalogue = True
+        ssd_file = sys.argv[2]
+    else:
+        print_catalogue = False
+        ssd_file = sys.argv[1]
+        uef_file = sys.argv[2]
+    
+    cat = makedfs.Catalogue(open(ssd_file))
+    if ssd_file.endswith(".dsd"):
         cat.interleaved = True
     
     title, disk_files = cat.read()
+    
+    if print_catalogue:
+        max_length = 0
+        for file in disk_files:
+            max_length = max(max_length, len(repr(file.name)))
+        
+        print repr(title)
+        for file in disk_files:
+            spacing = " " * (max_length - len(repr(file.name)))
+            print repr(file.name), spacing + "%08x %08x %x" % (
+                file.load_address, file.execution_address, file.length)
+        
+        sys.exit()
     
     if len(sys.argv) == 4:
         names = sys.argv[3].split(",")
@@ -66,5 +88,5 @@ if __name__ == "__main__":
     u.target_machine = "Electron"
     u.import_files(0, files, gap = True)
     
-    u.write(sys.argv[2], write_emulator_info = False)
+    u.write(uef_file, write_emulator_info = False)
     sys.exit()
