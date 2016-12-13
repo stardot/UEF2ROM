@@ -1,5 +1,12 @@
 trigger_check:
 
+    ; The following check was obtained from
+    ; http://mdfs.net/Info/Comp/BBC/SROMs/FastROMFS
+
+    lda $e2                         ; If cataloguing, exit instead of checking
+    and #$08                        ; for triggers.
+    bne trigger_check_quick_exit
+
     ; Compare the exported ROM pointer to the triggers.
 
     txa         ; Save X for later.
@@ -31,6 +38,7 @@ trigger_check:
 
     pla         ; Restore X.
     tax
+    trigger_check_quick_exit:
     rts
 
 trigger_start_decompression:
