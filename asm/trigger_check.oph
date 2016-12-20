@@ -34,6 +34,8 @@ trigger_check:
         dex                             ; Point to the low byte before looping
         bne trigger_check_loop          ; again if not at the base of the array.
 
+%(post-trigger check)s
+
     trigger_exit:
 
     pla         ; Restore X.

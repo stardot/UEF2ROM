@@ -557,6 +557,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
         
             os.write(tf, "\n; Compressed data\n")
             os.write(tf, ".alias after_triggers %i\n" % (len(triggers) * 2))
+            os.write(tf, ".alias last_trigger %i\n" % ((len(triggers) - 1) * 2))
             
             addresses = []
             for info in file_details:
@@ -610,6 +611,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             # Ideally, we would remove the decompression code and rebuild the ROM.
             sys.stderr.write("ROM file %s contains unused decompression code.\n" % rom_file)
             os.write(tf, ".alias after_triggers 0\n")
+            os.write(tf, ".alias last_trigger 0\n")
             os.write(tf, "triggers:\n")
             os.write(tf, "src_addresses:\n")
             os.write(tf, "dest_addresses:\n")
@@ -632,6 +634,7 @@ def get_data_address(header_file, rom_file):
     os.write(tf, header_file)
     # Include placeholder values.
     os.write(tf, ".alias after_triggers 0\n")
+    os.write(tf, ".alias last_trigger 0\n")
     #os.write(tf, ".alias debug 48\n")
     os.write(tf, "triggers:\n")
     os.write(tf, "src_addresses:\n")
@@ -639,6 +642,7 @@ def get_data_address(header_file, rom_file):
     os.write(tf, "dest_end_addresses:\n")
     os.close(tf)
     
+    print "Getting data addresses..."
     if os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file)):
         sys.exit(1)
     
@@ -690,7 +694,9 @@ def usage():
         "If a minimal ROM image is not used, the -t option can be used to specify\n"
         "that code to override *TAPE calls should be used. Additionally, the -T option\n"
         "can be used to add code to trap filing system checks and always report that\n"
-        "the cassette filing system is in use.\n\n"
+        "the cassette filing system is in use. The -r option is used to allow the\n"
+        "filing system trap to be removed after the last file in the ROM has been\n"
+        "loaded - note that this only works for compressed ROMS.\n\n"
         "The workspace for the ROM can be given as a hexadecimal value with the -w option\n"
         "and specifies the address in memory where the persistent ROM pointer will be\n"
         "stored; also the code and old BYTEV vector address for *TAPE interception (if\n"
@@ -743,7 +749,9 @@ if __name__ == "__main__":
          "second rom bank pointer sync code": "",
          "decode code": "",
          "trigger check": "",
+         "post-trigger check": "",
          "trigger routine": "",
+         "tape restore": "",
          "compress": False},
         {"title": '.byte "", 0', # '.byte "Test ROM", 0',
          "version string": '.byte "", 0', # '.byte "1.0", 0',
@@ -759,7 +767,9 @@ if __name__ == "__main__":
          "second rom bank pointer sync code": "",
          "decode code": "",
          "trigger check": "",
+         "post-trigger check": "",
          "trigger routine": "",
+         "tape restore": "",
          "compress": False},
         ]
     
@@ -784,6 +794,7 @@ if __name__ == "__main__":
         else:
             header_template = open(header_template_file).read()
         
+        tape_restore = find_option(args, "-R", 0)
         tape_override = find_option(args, "-t", 0)
         fscheck_override = find_option(args, "-T", 0)
         
@@ -817,13 +828,12 @@ if __name__ == "__main__":
                 sys.stderr.write("Cannot override *TAPE in minimal ROMs.\n")
                 sys.exit(1)
         
-        split_files = find_option(args, "-s", 0)
-        
         autobootable = find_option(args, "-a", 0)
         bootable = find_option(args, "-b", 0)
-        star_run = find_option(args, "-r", 0)
-        star_exec = find_option(args, "-x", 0)
         compress_files, hints = find_option(args, "-c", 1)
+        star_run = find_option(args, "-r", 0)
+        split_files = find_option(args, "-s", 0)
+        star_exec = find_option(args, "-x", 0)
         
         if compress_files:
             # -c [<addr0>.[<exec0>]]:...:[<addrN>.[<execN>]];[<addrN+1>.[<execN+1>]]:...:[<addrM>.[<execM>]]
@@ -856,10 +866,23 @@ if __name__ == "__main__":
                 if do_compression:
                     details[i]["decode code"] = open("asm/dp_decode.oph").read()
                     details[i]["trigger check"] = "jsr trigger_check\n"
-                    details[i]["trigger routine"] = open("asm/trigger_check.oph").read()
+                    
+                    trigger_routine = open("asm/trigger_check.oph").read()
+                    if tape_restore:
+                        details[i]["post-trigger check"] = open("asm/post_trigger_check.oph").read()
+                        if tape_override:
+                            details[i]["tape restore"] = open("asm/tape_restore.oph").read()
+                        else:
+                            details[i]["tape restore"] = open("asm/tape_restore_minimal.oph").read()
+                    
+                    details[i]["trigger routine"] = trigger_routine % details[i]
                     details[i]["compress"] = True
         else:
             decomp_addrs = []
+            
+            if tape_restore:
+                sys.stderr.write("Cannot restore *TAPE in uncompressed ROMs.\n")
+                sys.exit(1)
         
         if autobootable:
             details[0]["service boot code"] = open("asm/service_boot.oph").read()

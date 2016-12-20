@@ -1,3 +1,5 @@
+; Minimal ROM template
+
 .org $8000
 .alias current_paged_rom $f4
 .alias current_rom $f5
@@ -108,6 +110,7 @@ rom_command:
 
 ; Optionally include code to check for certain ROM addresses and trigger actions.
 %(trigger routine)s
+%(tape restore)s
 
 ; Optionally include code to perform decompression of compressed data.
 %(decode code)s

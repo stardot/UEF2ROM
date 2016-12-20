@@ -1,0 +1,6 @@
+tape_restore:
+
+    ; Call *TAPE.
+
+    lda #140
+    jsr $fff4

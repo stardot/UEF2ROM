@@ -1,0 +1,18 @@
+; Check for the last trigger. This is inlined in the trigger_check routine.
+
+post_trigger_check:
+
+    ldx #last_trigger
+
+    lda triggers,x                  ; Compare the low byte of the ROM
+    cmp exported_rom_pointer_low    ; pointer to the current trigger.
+    bne post_trigger_check_exit
+
+    inx
+    lda triggers,x                  ; Compare the high byte of the ROM
+    cmp exported_rom_pointer_high   ; pointer to the current trigger.
+    bne post_trigger_check_exit
+
+    jsr tape_restore
+
+post_trigger_check_exit:

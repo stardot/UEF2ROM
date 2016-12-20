@@ -1,0 +1,16 @@
+.alias BYTEV $020a
+
+tape_restore:
+    ; Restore the old BYTEV vector address.
+
+    sei
+    lda old_bytev
+    sta BYTEV
+    lda [old_bytev + 1]
+    sta [BYTEV + 1]
+    cli
+
+    ; Call *TAPE.
+
+    lda #140
+    jsr $fff4
