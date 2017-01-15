@@ -910,7 +910,7 @@ if __name__ == "__main__":
             for r, rom_index in enumerate(rom_indices):
                 details[r]["paging check"] = open("asm/paging_check.oph").read() % {
                     "base number address": int(base_number_address, 16),
-                    "rom index": int(rom_index) + r
+                    "rom index": int(rom_index)
                     }
                 details[r]["paging routine"] = open("asm/paging_routine.oph").read()
     
