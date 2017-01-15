@@ -624,6 +624,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
 
 def write_end_marker(tf):
 
+    os.write(tf, "end_of_romfs_marker:\n")
     os.write(tf, ".byte $2b\n")
 
 def get_data_address(header_file, rom_file):
@@ -637,6 +638,7 @@ def get_data_address(header_file, rom_file):
     os.write(tf, "src_addresses:\n")
     os.write(tf, "dest_addresses:\n")
     os.write(tf, "dest_end_addresses:\n")
+    os.write(tf, "end_of_romfs_marker:\n")
     os.close(tf)
     
     if os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file)):
@@ -676,7 +678,11 @@ def find_option(args, label, number = 0):
     return True, values
 
 def usage():
-    sys.stderr.write("Usage: %s [-f <file indices>] [-m | ([-p] [-t] [-w <workspace>] [-l])] [-s] [-b [-a] [-r|-x]] [-c <load addresses>] <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
+    sys.stderr.write(
+        "Usage: %s [-f <file indices>] [-m | ([-p] [-t] [-w <workspace>] [-l])] "
+        "[-s] [-b [-a] [-r|-x]] [-c <load addresses>] "
+        "[-P <bank info address> <ROM index>] "
+        "<UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
     sys.stderr.write(
         "The file indices can be given as a colon-separated list and can include\n"
         "hyphen-separated ranges of indices. Additionally, a special value of 's' can\n"
@@ -709,7 +715,11 @@ def usage():
         "The -c option is used to indicate that files should be compressed, and is used\n"
         "to supply information about the location in memory where they should be\n"
         "decompressed. This is followed by colon-separated lists of load addresses,\n"
-        "themselves separated using slashes.\n\n"
+        "themselves separated using slashes.\n"
+        "The -P option causes code to be included that writes to the paging register\n"
+        "at 0xfc00. The code reads from the bank info address specified to obtain a base\n"
+        "page number and adds the specified ROM index (base 10) to it in order to swap\n"
+        "in the ROM from the resulting bank number.\n\n"
         )
     sys.exit(1)
 
@@ -744,7 +754,9 @@ if __name__ == "__main__":
          "decode code": "",
          "trigger check": "",
          "trigger routine": "",
-         "compress": False},
+         "compress": False,
+         "paging check": "",
+         "paging routine": ""},
         {"title": '.byte "", 0', # '.byte "Test ROM", 0',
          "version string": '.byte "", 0', # '.byte "1.0", 0',
          "version": ".byte 1",
@@ -760,7 +772,9 @@ if __name__ == "__main__":
          "decode code": "",
          "trigger check": "",
          "trigger routine": "",
-         "compress": False},
+         "compress": False,
+         "paging check": "",
+         "paging routine": ""},
         ]
     
     try:
@@ -824,6 +838,7 @@ if __name__ == "__main__":
         star_run = find_option(args, "-r", 0)
         star_exec = find_option(args, "-x", 0)
         compress_files, hints = find_option(args, "-c", 1)
+        paging_code, paging_info = find_option(args, "-P", 2)
         
         if compress_files:
             # -c [<addr0>.[<exec0>]]:...:[<addrN>.[<execN>]];[<addrN+1>.[<execN+1>]]:...:[<addrM>.[<execM>]]
@@ -882,6 +897,20 @@ if __name__ == "__main__":
             details[0]["boot code"] = open("asm/boot_code.oph").read()
         else:
             details[0]["boot code"] = "pla\npla\nlda #0\nrts"
+        
+        if paging_code:
+            base_number_address, rom_index = paging_info
+            
+            if len(args) == 3:
+                r = 0
+            else:
+                r = 1
+            
+            details[r]["paging check"] = open("asm/paging_check.oph").read() % {
+                "base number address": int(base_number_address, 16),
+                "rom index": int(rom_index)
+                }
+            details[r]["paging routine"] = open("asm/paging_routine.oph").read()
     
     except (IndexError, ValueError):
         usage()
@@ -978,6 +1007,7 @@ if __name__ == "__main__":
     
     u = UEFfile.UEFfile(uef_file)
     
+    # Convert the UEF chunks to ROM data.
     convert_chunks(u, indices, decomp_addrs, [data_address, minimal_data_address],
         [header_template % details[0], minimal_header_template % details[1]],
         details, rom_files)
