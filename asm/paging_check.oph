@@ -1,0 +1,20 @@
+paging_check:
+
+    ; Compare the exported ROM pointer to the end of ROMFS marker.
+
+    lda #>end_of_romfs_marker
+    cmp exported_rom_pointer_high
+    bne paging_check_exit
+
+    lda #<end_of_romfs_marker
+    cmp exported_rom_pointer_low
+    bne paging_check_exit
+
+    ; Load the base number and add the ROM index to it.
+    clc
+    lda $%(base number address)x
+    adc #%(rom index)i
+
+    jmp paging_routine
+
+    paging_check_exit:

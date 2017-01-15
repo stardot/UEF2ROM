@@ -30,6 +30,8 @@ copyright_offset:
 copyright_string:
 %(copyright)s
 
+%(paging routine)s
+
 service_entry:
 
     cmp #$0d
@@ -90,6 +92,8 @@ read_byte_command:
     ldy #0
     lda (exported_rom_pointer),y
     tay
+
+%(paging check)s
 
 claim1:
     inc exported_rom_pointer

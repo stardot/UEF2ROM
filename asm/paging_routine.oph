@@ -1,0 +1,14 @@
+paging_routine:
+
+    ; Switch banks, hopefully landing in a routine like this one. Then just
+    ; exit, claiming the call.
+    sta $fc00
+
+    pla
+
+    lda #<data
+    sta exported_rom_pointer
+    lda #>data
+    sta [exported_rom_pointer + 1]
+
+    lda #$0e
