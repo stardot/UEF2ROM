@@ -899,18 +899,20 @@ if __name__ == "__main__":
             details[0]["boot code"] = "pla\npla\nlda #0\nrts"
         
         if paging_code:
-            base_number_address, rom_index = paging_info
+            base_number_address, rom_indices = paging_info
             
-            if len(args) == 3:
-                r = 0
-            else:
-                r = 1
+            rom_indices = map(int, rom_indices.split(":"))
             
-            details[r]["paging check"] = open("asm/paging_check.oph").read() % {
-                "base number address": int(base_number_address, 16),
-                "rom index": int(rom_index)
-                }
-            details[r]["paging routine"] = open("asm/paging_routine.oph").read()
+            if len(rom_indices) < len(args) - 2:
+                sys.stderr.write("Insufficient number of ROM indices specified.\n")
+                sys.exit(1)
+            
+            for r, rom_index in enumerate(rom_indices):
+                details[r]["paging check"] = open("asm/paging_check.oph").read() % {
+                    "base number address": int(base_number_address, 16),
+                    "rom index": int(rom_index) + r
+                    }
+                details[r]["paging routine"] = open("asm/paging_routine.oph").read()
     
     except (IndexError, ValueError):
         usage()
