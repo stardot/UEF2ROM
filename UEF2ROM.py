@@ -790,6 +790,9 @@ if __name__ == "__main__":
     uef_file = args[1]
     rom_files = args[2:]
     
+    for r in range(2, len(rom_files)):
+        details.append(details[1].copy())
+    
     try:
         if f:
             pieces = files.split(":")
@@ -899,7 +902,7 @@ if __name__ == "__main__":
             
             rom_indices = map(int, rom_indices.split(":"))
             
-            if len(rom_indices) < len(args) - 2:
+            if len(rom_indices) < len(rom_files):
                 sys.stderr.write("Insufficient number of ROM indices specified.\n")
                 sys.exit(1)
             
