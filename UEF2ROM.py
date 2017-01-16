@@ -653,7 +653,7 @@ def get_data_address(header_file, rom_file):
 class ArgumentError(Exception):
     pass
 
-def find_option(args, label, number = 0):
+def find_option(args, label, number = 0, missing_value = None):
 
     try:
         i = args.index(label)
@@ -661,7 +661,7 @@ def find_option(args, label, number = 0):
         if number == 0:
             return False
         else:
-            return False, None
+            return False, missing_value
     
     values = args[i + 1:i + number + 1]
     args[:] = args[:i] + args[i + number + 1:]
@@ -728,11 +728,6 @@ if __name__ == "__main__":
     args = sys.argv[:]
     indices = []
     
-    minimal = False
-    tape_override = False
-    fscheck_override = False
-    workspace = 0xa00
-    
     details = [
         {"title": '.byte "", 0', # '.byte "Test ROM", 0',
          "version string": '.byte "", 0', # '.byte "1.0", 0',
@@ -777,8 +772,25 @@ if __name__ == "__main__":
          "paging routine": ""},
         ]
     
+    autobootable = find_option(args, "-a", 0)
+    bootable = find_option(args, "-b", 0)
+    compress_files, hints = find_option(args, "-c", 1)
+    f, files = find_option(args, "-f", 1)
+    loop = find_option(args, "-l", 0)
+    minimal = find_option(args, "-m", 0)
+    paging_code, paging_info = find_option(args, "-P", 2)
+    persistent_pointer = find_option(args, "-p", 0)
+    split_files = find_option(args, "-s", 0)
+    star_exec = find_option(args, "-x", 0)
+    star_run = find_option(args, "-r", 0)
+    tape_override = find_option(args, "-t", 0)
+    fscheck_override = find_option(args, "-T", 0)
+    w, workspace = find_option(args, "-w", 1, 0xa00)
+    
+    uef_file = args[1]
+    rom_files = args[2:]
+    
     try:
-        f, files = find_option(args, "-f", 1)
         if f:
             pieces = files.split(":")
             for piece in pieces:
@@ -792,18 +804,13 @@ if __name__ == "__main__":
                     
                     indices += range(int(begin), int(end) + 1)
         
-        minimal = find_option(args, "-m", 0)
         if minimal:
             header_template = open(minimal_header_template_file).read()
         else:
             header_template = open(header_template_file).read()
         
-        tape_override = find_option(args, "-t", 0)
-        fscheck_override = find_option(args, "-T", 0)
-        
         if not minimal:
             
-            w, workspace = find_option(args, "-w", 1)
             if w:
                 if ":" in workspace:
                     pieces = workspace.split(":")
@@ -819,26 +826,15 @@ if __name__ == "__main__":
             # Non-minimal ROMs always need to call *ROM explicitly.
             details[0]["init romfs code"] = open("asm/init_romfs.oph").read()
             
-            # The second ROM can use a persistent ROM pointer.
-            if find_option(args, "-p", 0):
-                details[1]["second rom bank check code"] = open("asm/second_rom_bank_check.oph").read()
-                details[1]["second rom bank pointer sync code"] = open("asm/second_rom_bank_sync.oph").read()
-            
-            loop = find_option(args, "-l", 0)
-        
+            # The second and subsequent ROMs can use a persistent ROM pointer.
+            if persistent_pointer:
+                for r in range(1, len(rom_files)):
+                    details[r]["second rom bank check code"] = open("asm/second_rom_bank_check.oph").read()
+                    details[r]["second rom bank pointer sync code"] = open("asm/second_rom_bank_sync.oph").read()
         else:
             if tape_override or fscheck_override:
                 sys.stderr.write("Cannot override *TAPE in minimal ROMs.\n")
                 sys.exit(1)
-        
-        split_files = find_option(args, "-s", 0)
-        
-        autobootable = find_option(args, "-a", 0)
-        bootable = find_option(args, "-b", 0)
-        star_run = find_option(args, "-r", 0)
-        star_exec = find_option(args, "-x", 0)
-        compress_files, hints = find_option(args, "-c", 1)
-        paging_code, paging_info = find_option(args, "-P", 2)
         
         if compress_files:
             # -c [<addr0>.[<exec0>]]:...:[<addrN>.[<execN>]];[<addrN+1>.[<execN+1>]]:...:[<addrM>.[<execM>]]
@@ -918,11 +914,8 @@ if __name__ == "__main__":
         usage()
     
     # Check that we have suitable input and output files.
-    if not 3 <= len(args) <= 4:
+    if len(rom_files) < 1:
         usage()
-    
-    uef_file = args[1]
-    rom_files = args[2:]
     
     # Create directories as required.
     for rom_file in rom_files:
@@ -935,20 +928,23 @@ if __name__ == "__main__":
     # routine to suppress *TAPE commands.
     workspace_end = workspace
     
-    details[0]["rom pointer"] = details[1]["rom pointer"] = workspace
+    for r in range(len(rom_files)):
+        details[r]["rom pointer"] = workspace
     
     if minimal:
         # Both ROM files are minimal. Do not use workspace for a persistent ROM
         # pointer or bank number.
-        details[0]["rom bank"] = details[1]["rom bank"] = workspace_end
+        for r in range(len(rom_files)):
+            details[r]["rom bank"] = workspace_end
     else:
         # For non-minimal single ROMs we use two bytes for the persistent ROM
         # pointer.
         workspace_end += 2
-        details[0]["rom bank"] = details[1]["rom bank"] = workspace_end
+        for r in range(len(rom_files)):
+            details[r]["rom bank"] = workspace_end
         
         if len(rom_files) > 1:
-            # For two ROMs we use an additional byte for the bank number.
+            # For more than one ROM we use an additional byte for the bank number.
             workspace_end += 1
             
             details[0]["first rom bank init code"] = open("asm/first_rom_bank_init.oph").read()
@@ -958,8 +954,10 @@ if __name__ == "__main__":
             else:
                 details[0]["first rom bank behaviour code"] = "bne exit"
             
-            details[0]["second rom bank init code"] = \
-                details[1]["second rom bank init code"] = open("asm/second_rom_bank_init.oph").read()
+            second_rom_bank_init = open("asm/second_rom_bank_init.oph").read()
+            details[0]["second rom bank init code"] = second_rom_bank_init
+            for r in range(1, len(rom_files)):
+                details[r]["second rom bank init code"] = second_rom_bank_init
     
     # Add entries for tape interception, even if they are unused.
     details[0]["bytev"] = workspace_end
@@ -1003,16 +1001,19 @@ if __name__ == "__main__":
     # template files.
     minimal_header_template = open(minimal_header_template_file).read()
     
-    data_address = get_data_address(header_template % details[0], rom_files[0])
-    minimal_data_address = get_data_address(minimal_header_template % details[1],
-        rom_files[0])
+    header_templates = [header_template % details[0]]
+    for r in range(1, len(rom_files)):
+        header_templates.append(minimal_header_template % details[r])
+    
+    data_addresses = []
+    for r, header_template in enumerate(header_templates):
+        data_addresses.append(get_data_address(header_template % details[r], rom_files[r]))
     
     u = UEFfile.UEFfile(uef_file)
     
     # Convert the UEF chunks to ROM data.
-    convert_chunks(u, indices, decomp_addrs, [data_address, minimal_data_address],
-        [header_template % details[0], minimal_header_template % details[1]],
-        details, rom_files)
+    convert_chunks(u, indices, decomp_addrs, data_addresses, header_templates,
+                   details, rom_files)
     
     for rom_file in rom_files:
     
