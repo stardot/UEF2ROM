@@ -13,21 +13,21 @@
 ; You should have received a copy of the GNU General Public License
 ; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-.alias src       $90
-.alias src_low   $90
-.alias src_high  $91
+.alias src       $%(src)x
+.alias src_low   $%(src_low)x
+.alias src_high  $%(src_high)x
 
-.alias dest      $92
-.alias dest_low  $92
-.alias dest_high $93
+.alias dest      $%(dest)x
+.alias dest_low  $%(dest_low)x
+.alias dest_high $%(dest_high)x
 
-.alias end_low   $94
-.alias end_high  $95
+.alias end_low   $%(end_low)x
+.alias end_high  $%(end_high)x
 
-.alias special      $96
-.alias offset       $97
-.alias from_low     $98
-.alias from_high    $99
+.alias special      $%(special)x
+.alias offset       $%(offset)x
+.alias from_low     $%(from_low)x
+.alias from_high    $%(from_high)x
 
 decompress: ; $90,$91=compressed data, $92,$93=destination start
             ; $94,$95=destination end (one byte after decompressed data)
