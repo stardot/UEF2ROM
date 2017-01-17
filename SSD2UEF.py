@@ -78,7 +78,7 @@ if __name__ == "__main__":
             sys.stderr.write("File '%s' not found in the disk catalogue.\n" % name)
             sys.exit(1)
         
-        if "." in name:
+        if "$." in name:
             name = name.split(".")[-1]
         info = (name, file.load_address, file.execution_address, file.data)
         files.append(info)
