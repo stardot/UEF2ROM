@@ -775,6 +775,7 @@ if __name__ == "__main__":
     autobootable = find_option(args, "-a", 0)
     bootable = find_option(args, "-b", 0)
     compress_files, hints = find_option(args, "-c", 1)
+    compress_workspace, compress_workspace_start = find_option(args, "-C", 1, "90")
     f, files = find_option(args, "-f", 1)
     loop = find_option(args, "-l", 0)
     minimal = find_option(args, "-m", 0)
@@ -785,7 +786,12 @@ if __name__ == "__main__":
     star_run = find_option(args, "-r", 0)
     tape_override = find_option(args, "-t", 0)
     fscheck_override = find_option(args, "-T", 0)
-    w, workspace = find_option(args, "-w", 1, 0xa00)
+    use_workspace, workspace = find_option(args, "-w", 1, 0xa00)
+    
+    if minimal and (tape_override or fscheck_override or use_workspace):
+        sys.stderr.write("Cannot override *TAPE or use extra workspace in "
+                         "minimal ROMs.\n")
+        sys.exit(1)
     
     uef_file = args[1]
     rom_files = args[2:]
@@ -814,7 +820,7 @@ if __name__ == "__main__":
         
         if not minimal:
             
-            if w:
+            if use_workspace:
                 if ":" in workspace:
                     pieces = workspace.split(":")
                     workspace = int(pieces[0], 16)
@@ -834,10 +840,6 @@ if __name__ == "__main__":
                 for r in range(1, len(rom_files)):
                     details[r]["second rom bank check code"] = open("asm/second_rom_bank_check.oph").read()
                     details[r]["second rom bank pointer sync code"] = open("asm/second_rom_bank_sync.oph").read()
-        else:
-            if tape_override or fscheck_override:
-                sys.stderr.write("Cannot override *TAPE in minimal ROMs.\n")
-                sys.exit(1)
         
         if compress_files:
             # -c [<addr0>.[<exec0>]]:...:[<addrN>.[<execN>]];[<addrN+1>.[<execN+1>]]:...:[<addrM>.[<execM>]]
@@ -868,7 +870,17 @@ if __name__ == "__main__":
                         do_compression = True
                 
                 if do_compression:
-                    details[i]["decode code"] = open("asm/dp_decode.oph").read()
+                
+                    cws = int(compress_workspace_start, 16)
+                    dp_dict = {
+                        "src": cws, "src_low": cws, "src_high": cws + 1,
+                        "dest": cws + 2, "dest_low": cws + 2, "dest_high": cws + 3,
+                        "end_low": cws + 4, "end_high": cws + 5,
+                        "special": cws + 6, "offset": cws + 7,
+                        "from_low": cws + 8, "from_high": cws + 9
+                        }
+                    
+                    details[i]["decode code"] = open("asm/dp_decode.oph").read() % dp_dict
                     details[i]["trigger check"] = "jsr trigger_check\n"
                     details[i]["trigger routine"] = open("asm/trigger_check.oph").read()
                     details[i]["compress"] = True
