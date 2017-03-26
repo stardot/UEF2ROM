@@ -793,6 +793,9 @@ if __name__ == "__main__":
                          "minimal ROMs.\n")
         sys.exit(1)
     
+    if len(args) < 3:
+        usage()
+    
     uef_file = args[1]
     rom_files = args[2:]
     
