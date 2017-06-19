@@ -679,7 +679,8 @@ def find_option(args, label, number = 0, missing_value = None):
 
 def usage():
     sys.stderr.write(
-        "Usage: %s [-f <file indices>] [-m | ([-p] [-t] [-w <workspace>] [-l])] "
+        "Usage: %s [-f <file indices>] "
+        "[(-m [-M <custom routine oph file> <custom routine label>]) | ([-p] [-t] [-T] [-w <workspace>] [-l])] "
         "[-s] [-b [-a] [-r|-x]] [-c <load addresses>] "
         "[-P <bank info address> <ROM index>] "
         "<UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
@@ -719,7 +720,10 @@ def usage():
         "The -P option causes code to be included that writes to the paging register\n"
         "at 0xfc00. The code reads from the bank info address specified to obtain a base\n"
         "page number and adds the specified ROM index (base 10) to it in order to swap\n"
-        "in the ROM from the resulting bank number.\n\n"
+        "in the ROM from the resulting bank number.\n"
+        "The -M option allows a custom piece of code to be used to respond to the star\n"
+        "command for minimal ROMs. This code will be run before any other initialisation\n"
+        "code that may also be inserted into the ROM by other options.\n\n"
         )
     sys.exit(1)
 
@@ -734,7 +738,7 @@ if __name__ == "__main__":
          "version": ".byte 1",
          "copyright": '.byte "(C)", 0', # '.byte "(C) Original author", 0',
          "copyright offset": '.byte [copyright_string - rom_start - 1]',
-         "rom name": '.byte "MGC", 13',
+         "rom name": '',
          "service entry command code": "",
          "service command code": "",
          "service boot code": "",
@@ -751,13 +755,17 @@ if __name__ == "__main__":
          "trigger routine": "",
          "compress": False,
          "paging check": "",
-         "paging routine": ""},
+         "paging routine": "",
+         "custom command code": "",
+         "custom command code jump": ""},
         {"title": '.byte "", 0', # '.byte "Test ROM", 0',
          "version string": '.byte "", 0', # '.byte "1.0", 0',
          "version": ".byte 1",
          "copyright": '.byte "(C)", 0', # '.byte "(C) Original author", 0',
          "copyright offset": '.byte [copyright_string - rom_start - 1]',
-         "rom name": '.byte "MGC", 13',
+         "rom name": '',
+         "service entry command code": "",
+         "service command code": "",
          "service boot code": "",
          "boot code": "",
          "init romfs code": "",
@@ -769,7 +777,9 @@ if __name__ == "__main__":
          "trigger routine": "",
          "compress": False,
          "paging check": "",
-         "paging routine": ""},
+         "paging routine": "",
+         "custom command code": "",
+         "custom command code jump": ""},
         ]
     
     autobootable = find_option(args, "-a", 0)
@@ -787,6 +797,7 @@ if __name__ == "__main__":
     tape_override = find_option(args, "-t", 0)
     fscheck_override = find_option(args, "-T", 0)
     use_workspace, workspace = find_option(args, "-w", 1, 0xa00)
+    custom_star_command, (custom_oph_file, custom_label) = find_option(args, "-M", 2, "")
     
     if minimal and (tape_override or fscheck_override or use_workspace):
         sys.stderr.write("Cannot override *TAPE or use extra workspace in "
@@ -927,6 +938,15 @@ if __name__ == "__main__":
                     "rom index": int(rom_index)
                     }
                 details[r]["paging routine"] = open("asm/paging_routine.oph").read()
+        
+        if not minimal or custom_star_command:
+            details[0]["rom name"] = '.byte "MGC", 13'
+        
+        if minimal and custom_star_command:
+            details[0]["service entry command code"] = open("asm/service_entry_command.oph").read()
+            details[0]["service command code"] = open("asm/service_command.oph").read()
+            details[0]["custom command code"] = open(custom_oph_file).read()
+            details[0]["custom command code jump"] = "jsr %s\n" % custom_label
     
     except (IndexError, ValueError):
         usage()
