@@ -797,7 +797,7 @@ if __name__ == "__main__":
     tape_override = find_option(args, "-t", 0)
     fscheck_override = find_option(args, "-T", 0)
     use_workspace, workspace = find_option(args, "-w", 1, 0xa00)
-    custom_star_command, (custom_oph_file, custom_label) = find_option(args, "-M", 2, "")
+    custom_star_command, custom_star_details = find_option(args, "-M", 2, "")
     
     if minimal and (tape_override or fscheck_override or use_workspace):
         sys.stderr.write("Cannot override *TAPE or use extra workspace in "
@@ -903,15 +903,14 @@ if __name__ == "__main__":
         
         if autobootable:
             details[0]["service boot code"] = open("asm/service_boot.oph").read()
-            if minimal:
-                # Minimal ROMs only need to call *ROM if they are auto-bootable.
-                details[0]["init romfs code"] = open("asm/init_romfs.oph").read()
             bootable = True
         else:
-            if minimal:
-                if bootable:
-                    sys.stderr.write("Bootable minimal ROMs must also be auto-bootable.\n")
-                    sys.exit(1)
+            if minimal and bootable and not custom_star_command:
+                sys.stderr.write(
+                    "Bootable minimal ROMs must either be auto-bootable or implement a custom\n"
+                    "star command.\n"
+                    )
+                sys.exit(1)
             else:
                 # Not auto-bootable or minimal, so include code to allow
                 # the ROM to be initialised.
@@ -920,6 +919,9 @@ if __name__ == "__main__":
         
         if bootable:
             details[0]["boot code"] = open("asm/boot_code.oph").read()
+            if minimal:
+                # Minimal ROMs only need to call *ROM when booting.
+                details[0]["init romfs code"] = open("asm/init_romfs.oph").read()
         else:
             details[0]["boot code"] = "pla\npla\nlda #0\nrts"
         
@@ -943,6 +945,7 @@ if __name__ == "__main__":
             details[0]["rom name"] = '.byte "MGC", 13'
         
         if minimal and custom_star_command:
+            custom_oph_file, custom_label = custom_star_details
             details[0]["service entry command code"] = open("asm/service_entry_command.oph").read()
             details[0]["service command code"] = open("asm/service_command.oph").read()
             details[0]["custom command code"] = open(custom_oph_file).read()
