@@ -17,7 +17,7 @@
         cmp #13
         bne service_command_rom_loop
 
-    jmp rom_command
+    %(run service command)s
 
     service_command_not_found:
     pla                         ; pop Y and X registers off the stack

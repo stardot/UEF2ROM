@@ -34,7 +34,7 @@ copyright_string:
 
 service_entry:
 
-; Service entry code is included when the -C option is used.
+; Service entry code is included when the -M option is used.
 %(service entry command code)s
     cmp #$0d
     beq init_command
@@ -47,7 +47,7 @@ service_entry:
     rts
 
 rom_name:
-; A ROM name is included when the -C option is used.
+; A ROM name is included when the -M option is used.
 %(rom name)s
 
 init_command:
@@ -112,13 +112,13 @@ claim1:
     jmp claim
 
 service_command:
-; Service command code is included when the -C option is used.
+; Service command code is included when the -M option is used.
 %(service command code)s
 
 rom_command:
 
-; Custom command code is jumped to when the -C option is used.
-%(custom command code jump)s
+; Custom init code is jumped to when the -I option is used.
+%(custom init code jump)s
 
 ; These may include code if the ROM is autobootable.
 %(init romfs code)s
@@ -130,7 +130,10 @@ rom_command:
 ; Optionally include code to perform decompression of compressed data.
 %(decode code)s
 
-; Custom command code is included when the -C option is used.
+; Custom command code is included when the -M option is used.
 %(custom command code)s
+
+; Custom command code is included when the -M option is used.
+%(custom init code)s
 
 data:
