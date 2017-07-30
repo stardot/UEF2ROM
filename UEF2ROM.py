@@ -683,7 +683,7 @@ def usage():
         "          [(-m [-M <custom routine oph file> <custom routine label>]\n"
         "               [-I <custom routine oph file> <custom routine label>])\n"
         "           | ([-p] [-t] [-T] [-w <workspace>] [-l])]\n"
-        "          [-s] [-b [-a] [-r|-x]] [-c <load addresses>]\n"
+        "          [-s] [-b [-a] [-r|-x] [-B <boot file>]] [-c <load addresses>]\n"
         "          [-P <bank info address> <ROM index>]\n"
         "          <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
     sys.stderr.write(
@@ -712,7 +712,9 @@ def usage():
         "to ensure that files on the second ROM following a split file can be read.\n\n"
         "If the -s option is specified, files may be split between ROMs.\n\n"
         "If the -b option is specified, the first ROM will be run when selected.\n"
-        "Additionally, if the -a option is given, the ROM will be made auto-bootable.\n\n"
+        "Additionally, if the -a option is given, the ROM will be made auto-bootable.\n"
+        "If the -B option is also specified, the PAGE for subsequent BASIC programs\n"
+        "can be specified as a hexadecimal number.\n\n"
         "The -r option is used to specify that the first file must be executed with *RUN.\n"
         "The -x option indicates that *EXEC is used to execute the first file.\n\n"
         "The -c option is used to indicate that files should be compressed, and is used\n"
@@ -762,7 +764,8 @@ if __name__ == "__main__":
          "paging routine": "",
          "custom command code": "",
          "custom init code": "",
-         "custom init code jump": ""},
+         "custom init code jump": "",
+         "custom boot page command": ""},
         {"title": '.byte "", 0', # '.byte "Test ROM", 0',
          "version string": '.byte "", 0', # '.byte "1.0", 0',
          "version": ".byte 1",
@@ -785,11 +788,13 @@ if __name__ == "__main__":
          "paging routine": "",
          "custom command code": "",
          "custom init code": "",
-         "custom init code jump": ""},
+         "custom init code jump": "",
+         "custom boot page command": ""}
         ]
     
     autobootable = find_option(args, "-a", 0)
     bootable = find_option(args, "-b", 0)
+    custom_boot, custom_boot_page = find_option(args, "-B", 1, "")
     compress_files, hints = find_option(args, "-c", 1)
     compress_workspace, compress_workspace_start = find_option(args, "-C", 1, "90")
     f, files = find_option(args, "-f", 1)
@@ -930,6 +935,15 @@ if __name__ == "__main__":
             if minimal:
                 # Minimal ROMs only need to call *ROM when booting.
                 details[0]["init romfs code"] = open("asm/init_romfs.oph").read()
+            
+            if custom_boot:
+                if custom_boot_page.startswith("0x"):
+                    custom_boot_page = custom_boot_page[2:]
+                elif custom_boot_page[:1] in "$&":
+                    custom_boot_page = custom_boot_page[1:]
+                
+                # Add quotes for assember strings.
+                details[0]["custom boot page command"] = '"PAGE=&%X:", ' % int(custom_boot_page, 16)
         else:
             details[0]["boot code"] = "pla\npla\nlda #0\nrts"
         
