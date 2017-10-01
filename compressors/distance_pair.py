@@ -1,11 +1,28 @@
 #!/usr/bin/env python
 
+# Copyright (C) 2016 David Boddie <david@boddie.org.uk>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import sys
 
-def compress(data, window = "output"):
+def compress(data, offset_bits = 4, window = "output"):
 
-    special = find_least_used(data)
+    max_offset = (1 << offset_bits) - 1
+    max_length = (1 << (7 - offset_bits)) + 2
     
+    special = find_least_used(data)
     output = [special]
     
     i = 0
@@ -62,7 +79,16 @@ def compress(data, window = "output"):
             # encoding a zero in the second byte, confusing the first two cases.
             #
             # special 0                 -> special
+            #
+            # Near references are defined using the number of bits passed in
+            # the offset_bits parameter. These vary from 2 to 5:
+            #
+            # special 0llllloo          -> length (3-34), offset (1-3)
+            # special 0llllooo          -> length (3-18), offset (1-7)
             # special 0llloooo          -> length (3-10), offset (1-15)
+            # special 0llooooo          -> length (3-6), offset (1-31)
+            #
+            # Far references:
             # special 1ooooooo llllllll -> offset (1-128), length (4-259)
             
             if window == "output":
@@ -70,10 +96,10 @@ def compress(data, window = "output"):
             else:
                 offset = len(output) - b
             
-            if length < 11 and offset < 16:
+            if length <= max_length and offset <= max_offset:
                 # Store non-zero offset to avoid potential encoding of zero
                 # in the second byte.
-                output += [special, ((length - 3) << 4) | offset]
+                output += [special, ((length - 3) << offset_bits) | offset]
                 i += length
             
             elif length > 3:
@@ -166,8 +192,10 @@ def find_match_in_compressed(output, data, k, i):
     return match
 
 
-def decompress(data, window = "output", stop_at = None):
+def decompress(data, offset_bits = 4, window = "output", stop_at = None):
 
+    offset_mask = (1 << offset_bits) - 1
+    
     special = data[0]
     output = []
     
@@ -189,8 +217,8 @@ def decompress(data, window = "output", stop_at = None):
                 j = i
                 
                 if offset & 0x80 == 0:
-                    count = (offset >> 4) + 3
-                    offset = offset & 0x0f
+                    count = (offset >> offset_bits) + 3
+                    offset = offset & offset_mask
                     i += 2
                 else:
                     offset = (offset & 0x7f) + 1
