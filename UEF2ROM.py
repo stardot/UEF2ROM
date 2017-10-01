@@ -24,6 +24,12 @@ from compressors.distance_pair import compress, decompress
 header_template_file = "asm/romfs-template.oph"
 minimal_header_template_file = "asm/romfs-minimal-template.oph"
 
+res_dir = os.path.split(__file__)[0]
+
+def _open(file_name):
+
+    return open(os.path.join(res_dir, file_name))
+
 class Block:
 
     def __init__(self, data, info):
@@ -64,7 +70,11 @@ def read_block(block):
     block_number = struct.unpack("<H", block[a+8:a+10])[0]
     flags = struct.unpack("<B", block[a+12])[0]
     
-    return (name, load, exec_addr, block[a+19:-2], block_number, flags)
+    data = block[a+19:-2]
+    if len(data) > 256:
+        data = data[:256]
+    
+    return (name, load, exec_addr, data, block_number, flags)
 
 def write_block(u, name, load, exec_, data, n, flags, address):
 
@@ -146,7 +156,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
         tof, temp_oph_file = tempfile.mkstemp(suffix=os.extsep+'oph')
         tf, temp_boot_file = tempfile.mkstemp(suffix=os.extsep+'boot')
         
-        boot_file_text = open("asm/file_boot_code.oph").read() % details[0]
+        boot_file_text = _open("asm/file_boot_code.oph").read() % details[0]
         os.write(tof, boot_file_text)
         
         if os.system("ophis -o " + commands.mkarg(temp_boot_file) + " " + commands.mkarg(temp_oph_file)) != 0:
@@ -840,9 +850,9 @@ if __name__ == "__main__":
                     indices += range(int(begin), int(end) + 1)
         
         if minimal:
-            header_template = open(minimal_header_template_file).read()
+            header_template = _open(minimal_header_template_file).read()
         else:
-            header_template = open(header_template_file).read()
+            header_template = _open(header_template_file).read()
         
         if not minimal:
             
@@ -859,13 +869,13 @@ if __name__ == "__main__":
                 tape_workspace_call_address = None
             
             # Non-minimal ROMs always need to call *ROM explicitly.
-            details[0]["init romfs code"] = open("asm/init_romfs.oph").read()
+            details[0]["init romfs code"] = _open("asm/init_romfs.oph").read()
             
             # The second and subsequent ROMs can use a persistent ROM pointer.
             if persistent_pointer:
                 for r in range(1, len(rom_files)):
-                    details[r]["second rom bank check code"] = open("asm/second_rom_bank_check.oph").read()
-                    details[r]["second rom bank pointer sync code"] = open("asm/second_rom_bank_sync.oph").read()
+                    details[r]["second rom bank check code"] = _open("asm/second_rom_bank_check.oph").read()
+                    details[r]["second rom bank pointer sync code"] = _open("asm/second_rom_bank_sync.oph").read()
         
         if compress_files:
             # -c [<addr0>.[<exec0>]]:...:[<addrN>.[<execN>]];[<addrN+1>.[<execN+1>]]:...:[<addrM>.[<execM>]]
@@ -906,15 +916,15 @@ if __name__ == "__main__":
                         "from_low": cws + 8, "from_high": cws + 9
                         }
                     
-                    details[i]["decode code"] = open("asm/dp_decode.oph").read() % dp_dict
+                    details[i]["decode code"] = _open("asm/dp_decode.oph").read() % dp_dict
                     details[i]["trigger check"] = "jsr trigger_check\n"
-                    details[i]["trigger routine"] = open("asm/trigger_check.oph").read()
+                    details[i]["trigger routine"] = _open("asm/trigger_check.oph").read()
                     details[i]["compress"] = True
         else:
             decomp_addrs = []
         
         if autobootable:
-            details[0]["service boot code"] = open("asm/service_boot.oph").read()
+            details[0]["service boot code"] = _open("asm/service_boot.oph").read()
             bootable = True
         else:
             if minimal and bootable and not custom_star_command:
@@ -926,15 +936,15 @@ if __name__ == "__main__":
             else:
                 # Not auto-bootable or minimal, so include code to allow
                 # the ROM to be initialised.
-                details[0]["service entry command code"] = open("asm/service_entry_command.oph").read()
-                details[0]["service command code"] = open("asm/service_command.oph").read() % {
+                details[0]["service entry command code"] = _open("asm/service_entry_command.oph").read()
+                details[0]["service command code"] = _open("asm/service_command.oph").read() % {
                     "run service command": "jmp rom_command"}
         
         if bootable:
-            details[0]["boot code"] = open("asm/boot_code.oph").read()
+            details[0]["boot code"] = _open("asm/boot_code.oph").read()
             if minimal:
                 # Minimal ROMs only need to call *ROM when booting.
-                details[0]["init romfs code"] = open("asm/init_romfs.oph").read()
+                details[0]["init romfs code"] = _open("asm/init_romfs.oph").read()
             
             if custom_boot:
                 if custom_boot_page.startswith("0x"):
@@ -957,11 +967,11 @@ if __name__ == "__main__":
                 sys.exit(1)
             
             for r, rom_index in enumerate(rom_indices):
-                details[r]["paging check"] = open("asm/paging_check.oph").read() % {
+                details[r]["paging check"] = _open("asm/paging_check.oph").read() % {
                     "base number address": int(base_number_address, 16),
                     "rom index": int(rom_index)
                     }
-                details[r]["paging routine"] = open("asm/paging_routine.oph").read()
+                details[r]["paging routine"] = _open("asm/paging_routine.oph").read()
         
         if not minimal or custom_star_command or custom_init_command:
             # Even though a minimal ROM without a custom star command doesn't
@@ -972,8 +982,8 @@ if __name__ == "__main__":
         if minimal:
             if custom_star_command:
                 custom_oph_file, custom_label = custom_star_details
-                details[0]["service entry command code"] = open("asm/service_entry_command.oph").read()
-                details[0]["service command code"] = open("asm/service_command.oph").read() % {
+                details[0]["service entry command code"] = _open("asm/service_entry_command.oph").read()
+                details[0]["service command code"] = _open("asm/service_command.oph").read() % {
                     "run service command": "jsr %s\npla\ntax\npla\ntay\nlda #0\nrts" % custom_label}
                 details[0]["custom command code"] = open(custom_oph_file).read()
             
@@ -1019,14 +1029,14 @@ if __name__ == "__main__":
             # For more than one ROM we use an additional byte for the bank number.
             workspace_end += 1
             
-            details[0]["first rom bank init code"] = open("asm/first_rom_bank_init.oph").read()
-            details[0]["first rom bank check code"] = open("asm/first_rom_bank_check.oph").read()
+            details[0]["first rom bank init code"] = _open("asm/first_rom_bank_init.oph").read()
+            details[0]["first rom bank check code"] = _open("asm/first_rom_bank_check.oph").read()
             if loop:
                 details[0]["first rom bank behaviour code"] = "jsr reset_pointer"
             else:
                 details[0]["first rom bank behaviour code"] = "bne exit"
             
-            second_rom_bank_init = open("asm/second_rom_bank_init.oph").read()
+            second_rom_bank_init = _open("asm/second_rom_bank_init.oph").read()
             details[0]["second rom bank init code"] = second_rom_bank_init
             for r in range(1, len(rom_files)):
                 details[r]["second rom bank init code"] = second_rom_bank_init
@@ -1036,7 +1046,7 @@ if __name__ == "__main__":
     details[0]["tape workspace"] = workspace_end + 2
     
     if tape_override:
-        details[0]["tape init"] = open("asm/tape_init.oph").read()
+        details[0]["tape init"] = _open("asm/tape_init.oph").read()
         details[0]["call tape init"] = "    jsr tape_init"
         workspace_end += 10
         
@@ -1056,7 +1066,7 @@ if __name__ == "__main__":
     details[0]["fscheck workspace"] = workspace_end + 2
     
     if fscheck_override:
-        details[0]["fscheck init"] = open("asm/fscheck_init.oph").read()
+        details[0]["fscheck init"] = _open("asm/fscheck_init.oph").read()
         details[0]["call fscheck init"] = "    jsr fscheck_init"
         workspace_end += 17
         
@@ -1071,7 +1081,7 @@ if __name__ == "__main__":
     
     # Calculate the starting address of the ROM data by assembling the ROM
     # template files.
-    minimal_header_template = open(minimal_header_template_file).read()
+    minimal_header_template = _open(minimal_header_template_file).read()
     
     header_templates = [header_template % details[0]]
     for r in range(1, len(rom_files)):
