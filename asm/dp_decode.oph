@@ -29,6 +29,9 @@
 .alias from_low     $%(from_low)x
 .alias from_high    $%(from_high)x
 
+.alias count_mask $f0
+.alias offset_mask $0f
+
 decompress: ; $90,$91=compressed data, $92,$93=destination start
             ; $94,$95=destination end (one byte after decompressed data)
 
@@ -68,16 +71,16 @@ decompress: ; $90,$91=compressed data, $92,$93=destination start
                 bcs far_reference
 
                     sta offset  ; the offset is a combined offset-count value
-                    and #$f0
+                    and #count_mask
                     lsr
                     lsr
                     lsr
                     lsr
-                    adc #3      ; count = (offset >> 4) + 3
+                    adc #3      ; count = (offset >> offset_bits) + 3
                     tax
 
                     lda offset
-                    and #$0f
+                    and #offset_mask
                     sta offset
 
                     ldy #0
