@@ -265,7 +265,8 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                 header = write_block(u, name, load, exec_, "", this, 0x80, 0)
                 
                 # Compress the raw data.
-                cdata = "".join(map(chr, compress(map(ord, raw_data))))
+                cdata = "".join(map(chr, compress(map(ord, raw_data),
+                    offset_bits = details[r]["compress offset bits"])))
                 print "Compressed %s from %i to %i bytes at $%x." % (repr(name)[1:-1],
                     len(raw_data), len(cdata), load)
                 
@@ -300,7 +301,8 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                             sys.exit(1)
                         
                         cdata = cdata[:end]
-                        raw_data_written = decompress(map(ord, cdata))
+                        raw_data_written = decompress(map(ord, cdata),
+                            offset_bits = details[r]["compress offset bits"])
                         
                         # Discard the raw data that has been handled.
                         raw_data = raw_data[len(raw_data_written):]
@@ -693,7 +695,8 @@ def usage():
         "          [(-m [-M <custom routine oph file> <custom routine label>]\n"
         "               [-I <custom routine oph file> <custom routine label>])\n"
         "           | ([-p] [-t] [-T] [-w <workspace>] [-l])]\n"
-        "          [-s] [-b [-a] [-r|-x] [-B <boot file>]] [-c <load addresses>]\n"
+        "          [-s] [-b [-a] [-r|-x] [-B <boot file>]] \n"
+        "          [-c <load addresses>] [-cb <compression bits>]\n"
         "          [-P <bank info address> <ROM index>]\n"
         "          <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
     sys.stderr.write(
@@ -731,6 +734,9 @@ def usage():
         "to supply information about the location in memory where they should be\n"
         "decompressed. This is followed by colon-separated lists of load addresses,\n"
         "themselves separated using slashes.\n"
+        "Additionally, the compression algorithm can be tuned by specifying the number\n"
+        "of bits to use to store offsets in the compression data, using the -cb option\n"
+        "to do this. The default value of 4 is reasonable for most files.\n\n"
         "The -P option causes code to be included that writes to the paging register\n"
         "at 0xfc00. The code reads from the bank info address specified to obtain a base\n"
         "page number and adds the specified ROM index (base 10) to it in order to swap\n"
@@ -770,6 +776,7 @@ if __name__ == "__main__":
          "trigger check": "",
          "trigger routine": "",
          "compress": False,
+         "compress offset bits": 4,
          "paging check": "",
          "paging routine": "",
          "custom command code": "",
@@ -794,6 +801,7 @@ if __name__ == "__main__":
          "trigger check": "",
          "trigger routine": "",
          "compress": False,
+         "compress offset bits": 4,
          "paging check": "",
          "paging routine": "",
          "custom command code": "",
@@ -807,6 +815,7 @@ if __name__ == "__main__":
     custom_boot, custom_boot_page = find_option(args, "-B", 1, "")
     compress_files, hints = find_option(args, "-c", 1)
     compress_workspace, compress_workspace_start = find_option(args, "-C", 1, "90")
+    compress_bits, compress_offset_bits = find_option(args, "-cb", 1, "4")
     f, files = find_option(args, "-f", 1)
     loop = find_option(args, "-l", 0)
     minimal = find_option(args, "-m", 0)
@@ -908,18 +917,26 @@ if __name__ == "__main__":
                 if do_compression:
                 
                     cws = int(compress_workspace_start, 16)
+                    compress_offset_bits = int(compress_offset_bits)
+                    offset_mask = (1 << compress_offset_bits) - 1
+                    count_mask = 0xff ^ offset_mask
+                    shifts = compress_offset_bits * ("lsr\n" + " "*20)
+                    
                     dp_dict = {
                         "src": cws, "src_low": cws, "src_high": cws + 1,
                         "dest": cws + 2, "dest_low": cws + 2, "dest_high": cws + 3,
                         "end_low": cws + 4, "end_high": cws + 5,
                         "special": cws + 6, "offset": cws + 7,
-                        "from_low": cws + 8, "from_high": cws + 9
+                        "from_low": cws + 8, "from_high": cws + 9,
+                        "offset_mask": offset_mask, "count_mask": count_mask,
+                        "shifts": shifts
                         }
                     
                     details[i]["decode code"] = _open("asm/dp_decode.oph").read() % dp_dict
                     details[i]["trigger check"] = "jsr trigger_check\n"
                     details[i]["trigger routine"] = _open("asm/trigger_check.oph").read()
                     details[i]["compress"] = True
+                    details[i]["compress offset bits"] = compress_offset_bits
         else:
             decomp_addrs = []
         

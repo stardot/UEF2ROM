@@ -29,11 +29,11 @@
 .alias from_low     $%(from_low)x
 .alias from_high    $%(from_high)x
 
-.alias count_mask $f0
-.alias offset_mask $0f
+.alias count_mask $%(count_mask)x
+.alias offset_mask $%(offset_mask)x
 
-decompress: ; $90,$91=compressed data, $92,$93=destination start
-            ; $94,$95=destination end (one byte after decompressed data)
+decompress: ; srccompressed data, dest=destination start
+            ; end=destination end (one byte after decompressed data)
 
     ldy #0
     lda (src),y                     ; data[i]
@@ -72,10 +72,7 @@ decompress: ; $90,$91=compressed data, $92,$93=destination start
 
                     sta offset  ; the offset is a combined offset-count value
                     and #count_mask
-                    lsr
-                    lsr
-                    lsr
-                    lsr
+                    %(shifts)s
                     adc #3      ; count = (offset >> offset_bits) + 3
                     tax
 
@@ -142,7 +139,7 @@ increment_dest:
     increment_dest_exit:
     rts
 
-copy_decompressed:
+copy_decompressed:  ; X=number of bytes to copy
 
     cpx #0                      ; Since we don't add 4 to the stored count
     bne copy_decompressed_begin ; value to get the real length, we need to
