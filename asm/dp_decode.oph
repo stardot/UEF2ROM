@@ -32,7 +32,7 @@
 .alias count_mask $%(count_mask)x
 .alias offset_mask $%(offset_mask)x
 
-decompress: ; srccompressed data, dest=destination start
+decompress: ; src=compressed data, dest=destination start
             ; end=destination end (one byte after decompressed data)
 
     ldy #0
