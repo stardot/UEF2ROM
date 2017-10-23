@@ -1,3 +1,7 @@
+This tool requires Ophis to assemble 6502 code:
+
+https://michaelcmartin.github.io/Ophis/
+
 I've implemented three things in my ROMs that make it possible to convert
 cassette-based games to one or two ROM images:
 
