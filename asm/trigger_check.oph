@@ -57,10 +57,7 @@ trigger_start_decompression:
     sta dest_high
     dex
 
-    stx trigger_offset      ; The trigger offset is a multiple of 2, so
-    txa                     ; divide it by 2 and transfer the result to the
-    lsr                     ; trigger index so that the offset bits and masks
-    sta trigger_index       ; arrays can be accessed.
+    stx trigger_offset      ; The trigger offset is a multiple of 2.
 
     jsr decompress          ; Call the decompression routine.
 

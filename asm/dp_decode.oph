@@ -21,7 +21,6 @@
 .alias dest_low  $%(dest_low)x
 .alias dest_high $%(dest_high)x
 
-.alias trigger_index    $%(trigger_index)x
 .alias trigger_offset   $%(trigger_offset)x
 
 .alias special      $%(special)x
@@ -69,10 +68,11 @@ decompress: ; src=compressed data, dest=destination start
 
                     sta offset  ; the offset is a combined offset-count value
 
-                    ldx trigger_index
-                    and count_masks,x
+                    ldx trigger_offset
+                    and offset_bits_and_count_masks,x
 
-                    ldy offset_bits,x
+                    inx
+                    ldy offset_bits_and_count_masks,x
                     offset_shift_loop:
                         lsr
                         dey
@@ -82,8 +82,9 @@ decompress: ; src=compressed data, dest=destination start
                     tay         ; save the number of bytes to copy
 
                     lda offset
-                    ora count_masks,x   ; 0,0 -> 0 1,0 -> 1 | 0,1 -> 1 1,1 -> 1
-                    eor count_masks,x   ; 0,0 -> 0 1,0 -> 1 | 1,1 -> 0
+                    dex
+                    ora offset_bits_and_count_masks,x   ; equivalent to ANDing
+                    eor offset_bits_and_count_masks,x   ; with NOT count_mask
                     sta offset
 
                     tya         ; transfer the number of bytes to copy to the
