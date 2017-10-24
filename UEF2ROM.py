@@ -24,6 +24,8 @@ from compressors.distance_pair import compress, decompress
 header_template_file = "asm/romfs-template.oph"
 minimal_header_template_file = "asm/romfs-minimal-template.oph"
 
+compressed_entry_size = 11
+
 res_dir = os.path.split(__file__)[0]
 
 def _open(file_name):
@@ -38,9 +40,10 @@ class Block:
 
 class Compressed(Block):
 
-    def __init__(self, data, info, raw_length):
+    def __init__(self, data, info, raw_length, offset_bits):
         Block.__init__(self, data, info)
         self.raw_length = raw_length
+        self.offset_bits = offset_bits
 
 def format_data(data):
 
@@ -265,25 +268,44 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                 header = write_block(u, name, load, exec_, "", this, 0x80, 0)
                 
                 # Compress the raw data.
-                cdata = "".join(map(chr, compress(map(ord, raw_data),
-                    offset_bits = details[r]["compress offset bits"])))
-                print "Compressed %s from %i to %i bytes at $%x." % (repr(name)[1:-1],
-                    len(raw_data), len(cdata), load)
+                compress_offset_bits = details[r]["compress offset bits"]
+                
+                if compress_offset_bits != None:
+                    cdata = "".join(map(chr, compress(map(ord, raw_data),
+                            offset_bits = compress_offset_bits)))
+                else:
+                    compression_results = []
+                    
+                    for compress_offset_bits in range(3, 8):
+                        cdata = "".join(map(chr, compress(map(ord, raw_data),
+                            offset_bits = compress_offset_bits)))
+                        
+                        l = len(cdata)
+                        if compression_results and l > compression_results[0][0]:
+                            break
+                        
+                        compression_results.append((l, cdata, compress_offset_bits))
+                    
+                    compression_results.sort()
+                    cdata, compress_offset_bits = compression_results[0][1:]
+                
+                print "Compressed %s from %i to %i bytes with %i-bit offset at $%x." % (repr(name)[1:-1],
+                    len(raw_data), len(cdata), compress_offset_bits, load)
                 
                 # Calculate the space between the end of the ROM and the
                 # current address, leaving room for an end of ROM marker.
                 remaining = end_address - address - 1
                 
-                if remaining < len(header) + 8 + len(cdata):
+                if remaining < len(header) + compressed_entry_size + len(cdata):
                 
                     # The file won't fit into the current ROM. Either put it in a
                     # new one, or split it and put the rest of the file there.
                     print "File %s won't fit in the current ROM - %i bytes too long." % (
-                        repr(name), len(header) + 8 + len(cdata) - remaining)
+                        repr(name), len(header) + compressed_entry_size + len(cdata) - remaining)
                     
-                    # Try to fit the block header, 8 byte address entries and
+                    # Try to fit the block header, compressed entry and
                     # part of the compressed file in the remaining space.
-                    if split_files and (remaining >= 8 + len(header) + 256):
+                    if split_files and (remaining >= compressed_entry_size + len(header) + 256):
                     
                         # Decompress the truncated compressed data to find out
                         # how much raw data needs to be moved to the next ROM.
@@ -292,7 +314,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                         # following a special byte.
                         
                         special = cdata[0]
-                        end = remaining - 8 - len(header)
+                        end = remaining - compressed_entry_size - len(header)
                         while end > 2 and special in cdata[end-2:end]:
                             end -= 1
                         
@@ -302,7 +324,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                         
                         cdata = cdata[:end]
                         raw_data_written = decompress(map(ord, cdata),
-                            offset_bits = details[r]["compress offset bits"])
+                            offset_bits = compress_offset_bits)
                         
                         # Discard the raw data that has been handled.
                         raw_data = raw_data[len(raw_data_written):]
@@ -320,7 +342,8 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                         # Add information about the truncated block to the list
                         # of blocks, update the block number and record the
                         # trigger address.
-                        blocks.append(Compressed(cdata, info, len(raw_data_written)))
+                        blocks.append(Compressed(cdata, info, len(raw_data_written),
+                                      compress_offset_bits))
                         this += 1
                         triggers.append(address + len(header) - 1)
                         
@@ -365,7 +388,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                 else:
                     # Reserve space for the ROM address, decompression start
                     # and finish addresses, source address and compressed data.
-                    end_address -= 8 + len(cdata)
+                    end_address -= compressed_entry_size + len(cdata)
                     
                     if this == 0:
                         file_addresses.append(address)
@@ -375,7 +398,8 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                             "without compression support.\n" % repr(name))
                         sys.exit(1)
                 
-                    blocks.append(Compressed(cdata, info, len(raw_data)))
+                    blocks.append(Compressed(cdata, info, len(raw_data),
+                                             compress_offset_bits))
                     triggers.append(address + len(header) - 1)
                     
                     address += len(header)
@@ -582,7 +606,8 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                 
                     addr = triggers.pop(0)
                     decomp_addr = decomp_addr & 0xffff
-                    addresses.append((name, addr, src_label, decomp_addr, decomp_addr + block_info.raw_length))
+                    addresses.append((name, addr, src_label, decomp_addr,
+                        decomp_addr + block_info.raw_length, block_info.offset_bits))
                     
                     os.write(tf, "\n; %s\n" % repr(name)[1:-1])
                     os.write(tf, src_label + ":\n")
@@ -591,27 +616,49 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             #os.write(tf, "\n.alias debug %i" % (49 + roms.index(rom)))
             os.write(tf, "\ntriggers:\n")
             
-            for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
+            for name, addr, src_label, decomp_addr, decomp_end_addr, offset_bits in addresses:
                 if decomp_addr != "x":
                     os.write(tf, ".byte $%02x, $%02x ; %s\n" % (addr & 0xff, addr >> 8, repr(name)[1:-1]))
             
             os.write(tf, "\nsrc_addresses:\n")
             
-            for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
+            for name, addr, src_label, decomp_addr, decomp_end_addr, offset_bits in addresses:
                 if decomp_addr != "x":
-                    os.write(tf, ".byte <%s, >%s ; source address\n" % (src_label, src_label))
+                    os.write(tf, ".byte <%s, >%s\n" % (src_label, src_label))
             
             os.write(tf, "\ndest_addresses:\n")
             
-            for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
+            for name, addr, src_label, decomp_addr, decomp_end_addr, offset_bits in addresses:
                 if decomp_addr != "x":
-                    os.write(tf, ".byte $%02x, $%02x ; decompression start address\n" % (decomp_addr & 0xff, decomp_addr >> 8))
+                    os.write(tf, ".byte $%02x, $%02x\n" % (decomp_addr & 0xff, decomp_addr >> 8))
             
             os.write(tf, "\ndest_end_addresses:\n")
             
-            for name, addr, src_label, decomp_addr, decomp_end_addr in addresses:
+            for name, addr, src_label, decomp_addr, decomp_end_addr, offset_bits in addresses:
                 if decomp_addr != "x":
-                    os.write(tf, ".byte $%02x, $%02x ; decompression end address\n" % (decomp_end_addr & 0xff, decomp_end_addr >> 8))
+                    os.write(tf, ".byte $%02x, $%02x\n" % (decomp_end_addr & 0xff, decomp_end_addr >> 8))
+            
+            os.write(tf, "\noffset_bits:\n")
+            
+            count_masks = []
+            offset_masks = []
+            
+            for name, addr, src_label, decomp_addr, decomp_end_addr, offset_bits in addresses:
+                if decomp_addr != "x":
+                    offset_mask = (1 << offset_bits) - 1
+                    offset_masks.append(offset_mask)
+                    count_masks.append(0xff ^ offset_mask)
+                    os.write(tf, ".byte %i\n" % offset_bits)
+            
+            os.write(tf, "\noffset_masks:\n")
+            
+            for offset_mask in offset_masks:
+                os.write(tf, ".byte %i\n" % offset_mask)
+            
+            os.write(tf, "\ncount_masks:\n")
+            
+            for count_mask in count_masks:
+                os.write(tf, ".byte %i\n" % count_mask)
             
             os.write(tf, "\n")
             
@@ -626,6 +673,9 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             os.write(tf, "src_addresses:\n")
             os.write(tf, "dest_addresses:\n")
             os.write(tf, "dest_end_addresses:\n")
+            os.write(tf, "offset_bits:\n")
+            os.write(tf, "offset_masks:\n")
+            os.write(tf, "count_masks:\n")
         
         os.close(tf)
         if os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file)) != 0:
@@ -650,6 +700,9 @@ def get_data_address(header_file, rom_file):
     os.write(tf, "src_addresses:\n")
     os.write(tf, "dest_addresses:\n")
     os.write(tf, "dest_end_addresses:\n")
+    os.write(tf, "offset_bits:\n")
+    os.write(tf, "offset_masks:\n")
+    os.write(tf, "count_masks:\n")
     os.write(tf, "end_of_romfs_marker:\n")
     os.close(tf)
     
@@ -776,7 +829,7 @@ if __name__ == "__main__":
          "trigger check": "",
          "trigger routine": "",
          "compress": False,
-         "compress offset bits": 4,
+         "compress offset bits": None,
          "paging check": "",
          "paging routine": "",
          "custom command code": "",
@@ -801,7 +854,7 @@ if __name__ == "__main__":
          "trigger check": "",
          "trigger routine": "",
          "compress": False,
-         "compress offset bits": 4,
+         "compress offset bits": None,
          "paging check": "",
          "paging routine": "",
          "custom command code": "",
@@ -815,7 +868,7 @@ if __name__ == "__main__":
     custom_boot, custom_boot_page = find_option(args, "-B", 1, "")
     compress_files, hints = find_option(args, "-c", 1)
     compress_workspace, compress_workspace_start = find_option(args, "-C", 1, "90")
-    compress_bits, compress_offset_bits = find_option(args, "-cb", 1, "4")
+    compress_bits, compress_offset_bits = find_option(args, "-cb", 1, None)
     f, files = find_option(args, "-f", 1)
     loop = find_option(args, "-l", 0)
     minimal = find_option(args, "-m", 0)
@@ -917,19 +970,16 @@ if __name__ == "__main__":
                 if do_compression:
                 
                     cws = int(compress_workspace_start, 16)
-                    compress_offset_bits = int(compress_offset_bits)
-                    offset_mask = (1 << compress_offset_bits) - 1
-                    count_mask = 0xff ^ offset_mask
-                    shifts = compress_offset_bits * ("lsr\n" + " "*20)
+                    
+                    if compress_offset_bits != None:
+                        compress_offset_bits = int(compress_offset_bits)
                     
                     dp_dict = {
                         "src": cws, "src_low": cws, "src_high": cws + 1,
                         "dest": cws + 2, "dest_low": cws + 2, "dest_high": cws + 3,
-                        "end_low": cws + 4, "end_high": cws + 5,
+                        "trigger_index": cws + 4, "trigger_offset": cws + 5,
                         "special": cws + 6, "offset": cws + 7,
-                        "from_low": cws + 8, "from_high": cws + 9,
-                        "offset_mask": offset_mask, "count_mask": count_mask,
-                        "shifts": shifts
+                        "from_low": cws + 8, "from_high": cws + 9
                         }
                     
                     details[i]["decode code"] = _open("asm/dp_decode.oph").read() % dp_dict
