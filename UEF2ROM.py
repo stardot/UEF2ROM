@@ -638,27 +638,14 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                 if decomp_addr != "x":
                     os.write(tf, ".byte $%02x, $%02x\n" % (decomp_end_addr & 0xff, decomp_end_addr >> 8))
             
-            os.write(tf, "\noffset_bits:\n")
-            
-            count_masks = []
-            offset_masks = []
+            os.write(tf, "\noffset_bits_and_count_masks:\n")
             
             for name, addr, src_label, decomp_addr, decomp_end_addr, offset_bits in addresses:
                 if decomp_addr != "x":
                     offset_mask = (1 << offset_bits) - 1
-                    offset_masks.append(offset_mask)
-                    count_masks.append(0xff ^ offset_mask)
-                    os.write(tf, ".byte %i\n" % offset_bits)
-            
-            os.write(tf, "\noffset_masks:\n")
-            
-            for offset_mask in offset_masks:
-                os.write(tf, ".byte %i\n" % offset_mask)
-            
-            os.write(tf, "\ncount_masks:\n")
-            
-            for count_mask in count_masks:
-                os.write(tf, ".byte %i\n" % count_mask)
+                    count_mask = 0xff ^ offset_mask
+                    os.write(tf, ".byte $%02x    ; count mask\n" % count_mask)
+                    os.write(tf, ".byte %i     ; offset bits\n" % offset_bits)
             
             os.write(tf, "\n")
             
@@ -673,9 +660,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             os.write(tf, "src_addresses:\n")
             os.write(tf, "dest_addresses:\n")
             os.write(tf, "dest_end_addresses:\n")
-            os.write(tf, "offset_bits:\n")
-            os.write(tf, "offset_masks:\n")
-            os.write(tf, "count_masks:\n")
+            os.write(tf, "offset_bits_and_count_masks:\n")
         
         os.close(tf)
         if os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file)) != 0:
@@ -700,9 +685,7 @@ def get_data_address(header_file, rom_file):
     os.write(tf, "src_addresses:\n")
     os.write(tf, "dest_addresses:\n")
     os.write(tf, "dest_end_addresses:\n")
-    os.write(tf, "offset_bits:\n")
-    os.write(tf, "offset_masks:\n")
-    os.write(tf, "count_masks:\n")
+    os.write(tf, "offset_bits_and_count_masks:\n")
     os.write(tf, "end_of_romfs_marker:\n")
     os.close(tf)
     
@@ -977,9 +960,9 @@ if __name__ == "__main__":
                     dp_dict = {
                         "src": cws, "src_low": cws, "src_high": cws + 1,
                         "dest": cws + 2, "dest_low": cws + 2, "dest_high": cws + 3,
-                        "trigger_index": cws + 4, "trigger_offset": cws + 5,
-                        "special": cws + 6, "offset": cws + 7,
-                        "from_low": cws + 8, "from_high": cws + 9
+                        "trigger_offset": cws + 4,
+                        "special": cws + 5, "offset": cws + 6,
+                        "from_low": cws + 7, "from_high": cws + 8
                         }
                     
                     details[i]["decode code"] = _open("asm/dp_decode.oph").read() % dp_dict
