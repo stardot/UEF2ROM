@@ -21,16 +21,13 @@
 .alias dest_low  $%(dest_low)x
 .alias dest_high $%(dest_high)x
 
-.alias end_low   $%(end_low)x
-.alias end_high  $%(end_high)x
+.alias trigger_index    $%(trigger_index)x
+.alias trigger_offset   $%(trigger_offset)x
 
 .alias special      $%(special)x
 .alias offset       $%(offset)x
 .alias from_low     $%(from_low)x
 .alias from_high    $%(from_high)x
-
-.alias count_mask $%(count_mask)x
-.alias offset_mask $%(offset_mask)x
 
 decompress: ; src=compressed data, dest=destination start
             ; end=destination end (one byte after decompressed data)
@@ -71,14 +68,25 @@ decompress: ; src=compressed data, dest=destination start
                 bcs far_reference
 
                     sta offset  ; the offset is a combined offset-count value
-                    and #count_mask
-                    %(shifts)s
+
+                    ldx trigger_index
+                    and count_masks,x
+
+                    ldy offset_bits,x
+                    offset_shift_loop:
+                        lsr
+                        dey
+                        bne offset_shift_loop
+
                     adc #3      ; count = (offset >> offset_bits) + 3
-                    tax
+                    tay         ; save the number of bytes to copy
 
                     lda offset
-                    and #offset_mask
+                    and offset_masks,x
                     sta offset
+
+                    tya         ; transfer the number of bytes to copy to the
+                    tax         ; X register for use in copy_decompressed
 
                     ldy #0
 
@@ -106,10 +114,12 @@ decompress: ; src=compressed data, dest=destination start
         decompress_next:
 
         lda dest_low
-        cmp end_low
+        ldx trigger_offset
+        cmp dest_end_addresses,x
         bne decompress_loop
+        inx
         lda dest_high
-        cmp end_high
+        cmp dest_end_addresses,x
         bne decompress_loop
 
     clc
