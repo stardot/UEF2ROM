@@ -82,7 +82,8 @@ decompress: ; src=compressed data, dest=destination start
                     tay         ; save the number of bytes to copy
 
                     lda offset
-                    and offset_masks,x
+                    ora count_masks,x   ; 0,0 -> 0 1,0 -> 1 | 0,1 -> 1 1,1 -> 1
+                    eor count_masks,x   ; 0,0 -> 0 1,0 -> 1 | 1,1 -> 0
                     sta offset
 
                     tya         ; transfer the number of bytes to copy to the
