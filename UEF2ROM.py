@@ -24,7 +24,10 @@ from compressors.distance_pair import compress, decompress
 header_template_file = "asm/romfs-template.oph"
 minimal_header_template_file = "asm/romfs-minimal-template.oph"
 
-compressed_entry_size = 11
+# Each compressed file entry is
+#   trigger address (2) + source address (2) + destination address (2)
+# + destination end address (2) + count mask (1) + offset bits (1) = 10
+compressed_entry_size = 10
 
 res_dir = os.path.split(__file__)[0]
 
