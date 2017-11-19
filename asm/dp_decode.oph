@@ -29,7 +29,7 @@
 .alias from_high    $%(from_high)x
 
 decompress: ; src=compressed data, dest=destination start
-            ; end=destination end (one byte after decompressed data)
+            ; trigger offset=index into compressed entries
 
     ldy #0
     lda (src),y                     ; data[i]
