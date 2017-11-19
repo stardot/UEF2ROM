@@ -35,6 +35,18 @@ def _open(file_name):
 
     return open(os.path.join(res_dir, file_name))
 
+class AddressInfo:
+
+    def __init__(self, name, addr, src_label, decomp_addr, decomp_end_addr,
+                       offset_bits):
+    
+        self.name = name
+        self.addr = addr
+        self.src_label = src_label
+        self.decomp_addr = decomp_addr
+        self.decomp_end_addr = decomp_end_addr
+        self.offset_bits = offset_bits
+
 class Block:
 
     def __init__(self, data, info):
@@ -609,7 +621,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                 
                     addr = triggers.pop(0)
                     decomp_addr = decomp_addr & 0xffff
-                    addresses.append((name, addr, src_label, decomp_addr,
+                    addresses.append(AddressInfo(name, addr, src_label, decomp_addr,
                         decomp_addr + block_info.raw_length, block_info.offset_bits))
                     
                     os.write(tf, "\n; %s\n" % repr(name)[1:-1])
@@ -619,36 +631,43 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             #os.write(tf, "\n.alias debug %i" % (49 + roms.index(rom)))
             os.write(tf, "\ntriggers:\n")
             
-            for name, addr, src_label, decomp_addr, decomp_end_addr, offset_bits in addresses:
-                if decomp_addr != "x":
-                    os.write(tf, ".byte $%02x, $%02x ; %s\n" % (addr & 0xff, addr >> 8, repr(name)[1:-1]))
+            for address_info in addresses:
+                if address_info.decomp_addr != "x":
+                    os.write(tf, ".byte $%02x, $%02x ; %s\n" % (
+                        address_info.addr & 0xff, address_info.addr >> 8,
+                        repr(address_info.name)[1:-1]))
             
             os.write(tf, "\nsrc_addresses:\n")
             
-            for name, addr, src_label, decomp_addr, decomp_end_addr, offset_bits in addresses:
-                if decomp_addr != "x":
-                    os.write(tf, ".byte <%s, >%s\n" % (src_label, src_label))
+            for address_info in addresses:
+                if address_info.decomp_addr != "x":
+                    os.write(tf, ".byte <%s, >%s\n" % (address_info.src_label,
+                        address_info.src_label))
             
             os.write(tf, "\ndest_addresses:\n")
             
-            for name, addr, src_label, decomp_addr, decomp_end_addr, offset_bits in addresses:
-                if decomp_addr != "x":
-                    os.write(tf, ".byte $%02x, $%02x\n" % (decomp_addr & 0xff, decomp_addr >> 8))
+            for address_info in addresses:
+                if address_info.decomp_addr != "x":
+                    os.write(tf, ".byte $%02x, $%02x\n" % (
+                        address_info.decomp_addr & 0xff,
+                        address_info.decomp_addr >> 8))
             
             os.write(tf, "\ndest_end_addresses:\n")
             
-            for name, addr, src_label, decomp_addr, decomp_end_addr, offset_bits in addresses:
-                if decomp_addr != "x":
-                    os.write(tf, ".byte $%02x, $%02x\n" % (decomp_end_addr & 0xff, decomp_end_addr >> 8))
+            for address_info in addresses:
+                if address_info.decomp_addr != "x":
+                    os.write(tf, ".byte $%02x, $%02x\n" % (
+                        address_info.decomp_end_addr & 0xff,
+                        address_info.decomp_end_addr >> 8))
             
             os.write(tf, "\noffset_bits_and_count_masks:\n")
             
-            for name, addr, src_label, decomp_addr, decomp_end_addr, offset_bits in addresses:
-                if decomp_addr != "x":
-                    offset_mask = (1 << offset_bits) - 1
+            for address_info in addresses:
+                if address_info.decomp_addr != "x":
+                    offset_mask = (1 << address_info.offset_bits) - 1
                     count_mask = 0xff ^ offset_mask
                     os.write(tf, ".byte $%02x    ; count mask\n" % count_mask)
-                    os.write(tf, ".byte %i     ; offset bits\n" % offset_bits)
+                    os.write(tf, ".byte %i     ; offset bits\n" % address_info.offset_bits)
             
             os.write(tf, "\n")
             
