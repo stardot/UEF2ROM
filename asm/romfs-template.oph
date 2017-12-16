@@ -95,6 +95,7 @@ read_byte_command:
     bne exit
 
 %(trigger check)s
+%(last file check)s
     read_raw_data:
     ldy #0
     lda (exported_rom_pointer),y
@@ -156,5 +157,8 @@ sync_pointers:
 
 ; Optionally include code to perform decompression of compressed data.
 %(decode code)s
+
+; Optionally include code to check for the last file to be loaded.
+%(last file routine)s
 
 data:

@@ -1,0 +1,26 @@
+last_file_check:
+
+    txa         ; Save X for later.
+    pha
+
+    ldx #after_triggers ; Set X to refer to the address after the trigger array.
+
+    dex
+    lda triggers,x                  ; Compare the high byte of the ROM
+    cmp exported_rom_pointer_high   ; pointer to the current trigger.
+    bne last_file_check_exit
+
+    dex
+    lda triggers,x                  ; Compare the low byte of the ROM
+    cmp exported_rom_pointer_low    ; pointer to the current trigger.
+    bne last_file_check_exit
+
+    jsr %(last_file_label)s
+
+last_file_check_exit:
+    pla         ; Restore X.
+    tax
+    rts
+
+; The custom code is appended to this file by the UEF2ROM.py tool.
+%(last_file_routine)s

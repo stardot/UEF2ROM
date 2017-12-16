@@ -798,12 +798,14 @@ def usage():
         "The -P option causes code to be included that writes to the paging register\n"
         "at 0xfc00. The code reads from the bank info address specified to obtain a base\n"
         "page number and adds the specified ROM index (base 10) to it in order to swap\n"
-        "in the ROM from the resulting bank number.\n"
+        "in the ROM from the resulting bank number.\n\n"
         "The -M option allows a custom piece of code to be used to respond to the star\n"
         "command that is otherwise not used for minimal ROMs.\n"
-        "The -I option is like the -M option except that the custom code is not\n"
-        "as a star command and will be run before any other initialisation\n"
+        "The -I option is like the -M option except that the custom code is not tied to\n"
+        "a star command and will be run before any other initialisation\n"
         "code that may also be inserted into the ROM by other options.\n\n"
+        "The -L option allows a custom piece of code to be run after the last file has\n"
+        "been read.\n"
         )
     sys.exit(1)
 
@@ -833,6 +835,8 @@ if __name__ == "__main__":
          "decode code": "",
          "trigger check": "",
          "trigger routine": "",
+         "last file check": "",
+         "last file routine": "",
          "compress": False,
          "compress offset bits": None,
          "paging check": "",
@@ -858,6 +862,8 @@ if __name__ == "__main__":
          "decode code": "",
          "trigger check": "",
          "trigger routine": "",
+         "last file check": "",
+         "last file routine": "",
          "compress": False,
          "compress offset bits": None,
          "paging check": "",
@@ -887,6 +893,7 @@ if __name__ == "__main__":
     use_workspace, workspace = find_option(args, "-w", 1, 0xa00)
     custom_star_command, custom_star_details = find_option(args, "-M", 2, "")
     custom_init_command, custom_init_details = find_option(args, "-I", 2, "")
+    last_file_command, last_file_details = find_option(args, "-L", 2, "")
     
     if minimal and (tape_override or fscheck_override or use_workspace):
         sys.stderr.write("Cannot override *TAPE or use extra workspace in "
@@ -1063,6 +1070,21 @@ if __name__ == "__main__":
                 custom_oph_file, custom_label = custom_init_details
                 details[0]["custom init code jump"] = "jsr %s" % custom_label
                 details[0]["custom init code"] = open(custom_oph_file).read()
+        
+        if last_file_command:
+            last_file_name, last_file_label = last_file_details
+            
+            details[-1]["last file check"] = "jsr last_file_check\n"
+            if compress_files:
+                last_file_wrapper = "asm/last_file_check_compressed.oph"
+            else:
+                last_file_wrapper = "asm/last_file_check.oph"
+            
+            details[-1]["last file routine"] = \
+                _open(last_file_wrapper).read() % {
+                    "last_file_label": last_file_label,
+                    "last_file_routine": open(last_file_name).read()
+                    }
     
     except (IndexError, ValueError):
         usage()

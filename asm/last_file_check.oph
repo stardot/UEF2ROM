@@ -1,0 +1,17 @@
+last_file_check:
+
+    lda exported_rom_pointer_high
+    cmp #>[end_of_romfs_marker - 1]
+    bne last_file_check_exit
+
+    lda exported_rom_pointer_low
+    cmp #<[end_of_romfs_marker - 1]
+    bne last_file_check_exit
+
+    jsr %(last_file_label)s
+
+last_file_check_exit:
+    rts
+
+; The custom code is appended to this file by the UEF2ROM.py tool.
+%(last_file_routine)s
