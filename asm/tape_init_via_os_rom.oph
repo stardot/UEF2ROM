@@ -1,0 +1,55 @@
+.alias BYTEV $020a
+
+tape_init:
+    ; Copy the vector handling code into the tape_workspace.
+
+    ldx #0
+    bytev_rom_loop:
+        lda new_bytev,x
+        sta tape_workspace,x
+        inx
+        cpx #[new_bytev_end - new_bytev]
+        bne bytev_rom_loop
+
+    lda BYTEV
+    sta old_bytev
+    lda [BYTEV + 1]
+    sta [old_bytev + 1]
+
+    sei
+    lda tape_workspace_call_address
+    cmp #$4c                            ; Look for a JMP instruction.
+    beq tape_init_store_vector
+
+        ; Assume that the JMP instruction occurs earlier - this may be invalid
+        ; for the variant of the OS in use but there's not much we can do about
+        ; this at run-time!
+        sec
+        lda #<tape_workspace_call_address
+        sbc #$17
+        sta BYTEV
+        lda #>tape_workspace_call_address
+        sbc #0
+        clc
+        jmp tape_init_finish
+
+    tape_init_store_vector:
+    lda #<tape_workspace_call_address
+    sta BYTEV
+    lda #>tape_workspace_call_address
+    tape_init_finish:
+    sta [BYTEV + 1]
+    cli
+
+    rts
+
+new_bytev:
+    cmp #140
+    beq no_tape
+    jmp (old_bytev)
+    no_tape:
+;    ldx #0
+;    dex
+;    clc
+    rts
+new_bytev_end:

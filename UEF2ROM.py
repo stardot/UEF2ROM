@@ -1140,15 +1140,19 @@ if __name__ == "__main__":
     details[0]["tape workspace"] = workspace_end + 2
     
     if tape_override:
-        details[0]["tape init"] = _open("asm/tape_init.oph").read()
-        details[0]["call tape init"] = "    jsr tape_init"
-        workspace_end += 10
-        
         # Allow the vector to point to somewhere other than the code itself. This
         # enables us to borrow a JMP instruction elsewhere in memory to hide the
         # true location of our code.
         if tape_workspace_call_address is None:
             tape_workspace_call_address = details[0]["tape workspace"]
+        
+        if tape_workspace_call_address >= 0xc000:
+            details[0]["tape init"] = _open("asm/tape_init_via_os_rom.oph").read()
+        else:
+            details[0]["tape init"] = _open("asm/tape_init.oph").read()
+        
+        details[0]["call tape init"] = "    jsr tape_init"
+        workspace_end += 10
         
         details[0]["tape workspace call address"] = tape_workspace_call_address
     else:
