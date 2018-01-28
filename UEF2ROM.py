@@ -805,7 +805,8 @@ def usage():
         "a star command and will be run before any other initialisation\n"
         "code that may also be inserted into the ROM by other options.\n\n"
         "The -L option allows a custom piece of code to be run after the last file has\n"
-        "been read.\n"
+        "been read, accepting the name of the Ophis file to assemble and the name of\n"
+        "the label in the file that is the start of the subroutine to call.\n"
         )
     sys.exit(1)
 
@@ -1080,6 +1081,8 @@ if __name__ == "__main__":
             else:
                 last_file_wrapper = "asm/last_file_check.oph"
             
+            print "Including", last_file_name, "to be called after all files have been loaded."
+            print "The", last_file_label, "subroutine will be called."
             details[-1]["last file routine"] = \
                 _open(last_file_wrapper).read() % {
                     "last_file_label": last_file_label,
