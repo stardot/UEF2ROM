@@ -315,8 +315,17 @@ if __name__ == "__main__":
     if do_merge:
         args.remove("--merge")
     
+    try:
+        bits = args.index("--bits")
+        offset_bits = int(args[bits + 1])
+        args = args[:bits] + args[bits + 2:]
+    except ValueError:
+        offset_bits = 4
+    
+    print "Using %i bits for offsets." % offset_bits
+    
     if len(args) != 4:
-        sys.stderr.write("Usage: %s --compress|--decompress [--output|--compressed] [--merge] <input file> <output file>\n" % sys.argv[0])
+        sys.stderr.write("Usage: %s --compress|--decompress [--output|--compressed] [--merge] [--bits <bits>] <input file> <output file>\n" % sys.argv[0])
         sys.exit(1)
     
     command = args[1]
@@ -332,7 +341,7 @@ if __name__ == "__main__":
             original_data = data
             data = merge(data)
         
-        c = compress(data, mode)
+        c = compress(data, offset_bits = offset_bits, window = mode)
         print "Compressed:", len(c)
         try:
             out_f.write("".join(map(chr, c)))
@@ -340,7 +349,7 @@ if __name__ == "__main__":
             hexdump(c)
             raise
         
-        d = decompress(c, mode)
+        d = decompress(c, offset_bits = offset_bits, window = mode)
         if do_merge:
             d = unmerge(d)
             data = original_data
