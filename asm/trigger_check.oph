@@ -26,7 +26,36 @@ trigger_check:
         cmp exported_rom_pointer_low    ; pointer to the current trigger.
         bne trigger_check_base
 
-        jmp trigger_start_decompression
+        ; Compare the file name being searched for with the one in the block
+        ; just loaded. If the search file name is just a null byte then go ahead
+        ; and decompress the data anyway.
+        lda $3d2
+        beq trigger_start_decompression
+
+        txa
+        pha
+
+        ldx #0
+        trigger_check_file_name_loop:
+            lda $3b2,x
+            cmp $3d2,x
+            beq trigger_check_file_name_char_matches
+
+            ; Use the carry flag to indicate whether matching succeeded.
+            clc
+            bcc trigger_check_file_name_end_loop
+
+            trigger_check_file_name_char_matches:
+            cmp #0                               ; Null byte read, C should be
+            beq trigger_check_file_name_end_loop ; set.
+            inx
+            cpx #11                             ; All characters matched, C
+            bne trigger_check_file_name_loop    ; should be set.
+
+        trigger_check_file_name_end_loop:
+        pla
+        tax
+        bcs trigger_start_decompression
 
         trigger_check_base:
         cpx #0                          ; If not at the base of the array then
