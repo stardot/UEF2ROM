@@ -24,8 +24,11 @@ trigger_check:
         dex
         lda triggers,x                  ; Compare the low byte of the ROM
         cmp exported_rom_pointer_low    ; pointer to the current trigger.
-        beq trigger_start_decompression
+        bne trigger_check_base
 
+        jmp trigger_start_decompression
+
+        trigger_check_base:
         cpx #0                          ; If not at the base of the array then
         bne trigger_check_loop          ; loop again.
         beq trigger_exit                ; Otherwise exit.
