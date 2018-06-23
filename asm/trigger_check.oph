@@ -38,24 +38,41 @@ trigger_check:
         ldx #0
         trigger_check_file_name_loop:
             lda $3b2,x
-            cmp $3d2,x
-            beq trigger_check_file_name_char_matches
+            sta trigger_offset  ; Store the original char in an unused location.
+            cmp #$61
+            bcc trigger_check_file_name_check_case  ; < 'a'
+            cmp #$7b
+            bcs trigger_check_file_name_check_case  ; > 'z'
 
-            ; Use the carry flag to indicate whether matching succeeded.
-            clc
-            bcc trigger_check_file_name_end_loop
+            and #$df            ; Convert the char to upper case and store it
+            sta trigger_offset  ; in a location that isn't being used.
 
-            trigger_check_file_name_char_matches:
-            cmp #0                               ; Null byte read, C should be
-            beq trigger_check_file_name_end_loop ; set.
+            trigger_check_file_name_check_case:
+            lda $3d2,x
+            cmp #$61
+            bcc trigger_check_file_name_check_char  ; < 'a'
+            cmp #$7b
+            bcs trigger_check_file_name_check_char  ; > 'z'
+
+            and #$df            ; Convert the char to upper case and store it
+
+            trigger_check_file_name_check_char:
+            cmp trigger_offset
+            bne trigger_check_file_name_differs
+            cmp #0
+            beq trigger_check_file_name_matches
             inx
-            cpx #11                             ; All characters matched, C
-            bne trigger_check_file_name_loop    ; should be set.
+            cpx #11
+            bne trigger_check_file_name_loop
 
-        trigger_check_file_name_end_loop:
+        trigger_check_file_name_matches:
         pla
         tax
-        bcs trigger_start_decompression
+        jmp trigger_start_decompression
+
+        trigger_check_file_name_differs:
+        pla
+        tax
 
         trigger_check_base:
         cpx #0                          ; If not at the base of the array then
