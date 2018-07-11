@@ -55,6 +55,9 @@ def patch_files(u, patch_file):
         for byte in data.split(","):
             bytes += chr(int(byte, 16))
         
+        print "Replacing %i bytes at 0x%x with %i bytes." % (span_length,
+            offset, len(bytes))
+        
         # Obtain the information about the file at the specified position in the
         # UEF file.
         info = u.contents[position]
