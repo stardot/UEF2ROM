@@ -9,5 +9,5 @@ from distutils.core import setup
 from Cython.Build import cythonize
 
 setup(
-    ext_modules = cythonize("compressors/distance_pair.py")
+    ext_modules = cythonize("compressors/distance_pair.pyx")
     )

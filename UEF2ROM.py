@@ -364,16 +364,15 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                 
                 # Compress the raw data.
                 compress_offset_bits = details[r]["compress offset bits"]
+                encoded_raw_data = map(ord, raw_data)
                 
                 if compress_offset_bits != None:
-                    cdata = "".join(map(chr, compress(map(ord, raw_data),
-                            offset_bits = compress_offset_bits)))
+                    cdata = compress(encoded_raw_data, offset_bits = compress_offset_bits)
                 else:
                     compression_results = []
                     
                     for compress_offset_bits in range(3, 8):
-                        cdata = "".join(map(chr, compress(map(ord, raw_data),
-                            offset_bits = compress_offset_bits)))
+                        cdata = compress(encoded_raw_data, offset_bits = compress_offset_bits)
                         
                         l = len(cdata)
                         if compression_results and l > compression_results[0][0]:
@@ -383,6 +382,13 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                     
                     compression_results.sort()
                     cdata, compress_offset_bits = compression_results[0][1:]
+                
+                if decompress(cdata, compress_offset_bits) != encoded_raw_data:
+                    sys.stderr.write("Error when compressing file %s. "
+                        "Decompressed data did not match the original data.\n" % name)
+                    sys.exit(1)
+                else:
+                    cdata = "".join(map(chr, cdata))
                 
                 print "Compressed %s from %i to %i bytes with %i-bit offset at $%x." % (repr(name)[1:-1],
                     len(raw_data), len(cdata), compress_offset_bits, load)
