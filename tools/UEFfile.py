@@ -734,8 +734,8 @@ class UEFfile:
 
 
     def create_chunks(self, name, load, exe, data):
-        """Create suitable chunks, and insert them into
-        the list of chunks."""
+        """Creates and returns suitable chunks for a file with the given name,
+        load address, executable address and data."""
 
         # Reset the block number to zero
         block_number = 0
