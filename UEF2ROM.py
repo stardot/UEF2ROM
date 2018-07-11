@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import commands, os, stat, struct, sys, tempfile
-from tools import UEFfile
+from tools import patcher, UEFfile
 from compressors.distance_pair import compress, decompress
 
 header_template_file = "asm/romfs-template.oph"
@@ -30,6 +30,86 @@ minimal_header_template_file = "asm/romfs-minimal-template.oph"
 compressed_entry_size = 10
 
 res_dir = os.path.split(__file__)[0]
+
+__usage__ = \
+"""Usage: %s [-f <file indices>]
+          [(-m [-M <custom routine oph file> <custom routine label>]
+               [-I <custom routine oph file> <custom routine label>])
+           | ([-p] [-t] [-T] [-w <workspace>] [-l])]
+          [-s] [-b [-a] [-r|-x] [-B <boot file>]]
+          [-c <load addresses>] [-cb <compression bits>]
+          [-pf <patch file>]
+          [-P <bank info address> <ROM index>]
+          <UEF file> <ROM file> [<ROM file>]
+
+"""
+
+__description__ = \
+"""The file indices can be given as a colon-separated list and can include
+hyphen-separated ranges of indices. Additionally, a special value of 's' can
+be used to indicate the end of a ROM, so that files following this will be
+added to a new ROM.
+
+The first ROM image can be specified to be a minimal ROM with the -m option.
+Otherwise, it will contain code to use a persistent ROM pointer.
+The second ROM image will always be minimal, but can be specified to use a
+persistent ROM pointer if the -p option is given and the first ROM is not a
+minimal ROM.
+
+If a minimal ROM image is not used, the -t option can be used to specify
+that code to override *TAPE calls should be used. Additionally, the -T option
+can be used to add code to trap filing system checks and always report that
+the cassette filing system is in use.
+
+The workspace for the ROM can be given as a hexadecimal value with the -w option
+and specifies the address in memory where the persistent ROM pointer will be
+stored; also the code and old BYTEV vector address for *TAPE interception (if
+used) and the code and old ARGSV vector address is filing system checks are
+intercepted. The workspace defaults to a00.
+
+If you specify a pair of addresses separated by a colon (e.g, d3f:ef97) then the
+second address will be used for the BYTEV vector address.
+
+The -l option determines whether the first ROM will be read again after the
+second ROM has been accessed. By default, the first ROM will not be readable
+to ensure that files on the second ROM following a split file can be read.
+
+If the -s option is specified, files may be split between ROMs.
+
+If the -b option is specified, the first ROM will be run when selected.
+Additionally, if the -a option is given, the ROM will be made auto-bootable.
+If the -B option is also specified, the PAGE for subsequent BASIC programs
+can be specified as a hexadecimal number.
+
+The -r option is used to specify that the first file must be executed with *RUN.
+The -x option indicates that *EXEC is used to execute the first file.
+
+The -c option is used to indicate that files should be compressed, and is used
+to supply information about the location in memory where they should be
+decompressed. This is followed by colon-separated lists of load addresses,
+themselves separated using slashes.
+Additionally, the compression algorithm can be tuned by specifying the number
+of bits to use to store offsets in the compression data, using the -cb option
+to do this. The default value of 4 is reasonable for most files.
+
+The -P option causes code to be included that writes to the paging register
+at 0xfc00. The code reads from the bank info address specified to obtain a base
+page number and adds the specified ROM index (base 10) to it in order to swap
+in the ROM from the resulting bank number.
+
+The -M option allows a custom piece of code to be used to respond to the star
+command that is otherwise not used for minimal ROMs.
+The -I option is like the -M option except that the custom code is not tied to
+a star command and will be run before any other initialisation
+code that may also be inserted into the ROM by other options.
+
+The -L option allows a custom piece of code to be run after the last file has
+been read, accepting the name of the Ophis file to assemble and the name of
+the label in the file that is the start of the subroutine to call.
+
+The -pf option allows a set of patches to be applied to files in the UEF before
+they are encoded in a ROM.
+"""
 
 def _open(file_name):
 
@@ -748,66 +828,8 @@ def find_option(args, label, number = 0, missing_value = None):
     return True, values
 
 def usage():
-    sys.stderr.write(
-        "Usage: %s [-f <file indices>]\n"
-        "          [(-m [-M <custom routine oph file> <custom routine label>]\n"
-        "               [-I <custom routine oph file> <custom routine label>])\n"
-        "           | ([-p] [-t] [-T] [-w <workspace>] [-l])]\n"
-        "          [-s] [-b [-a] [-r|-x] [-B <boot file>]] \n"
-        "          [-c <load addresses>] [-cb <compression bits>]\n"
-        "          [-P <bank info address> <ROM index>]\n"
-        "          <UEF file> <ROM file> [<ROM file>]\n\n" % sys.argv[0])
-    sys.stderr.write(
-        "The file indices can be given as a colon-separated list and can include\n"
-        "hyphen-separated ranges of indices. Additionally, a special value of 's' can\n"
-        "be used to indicate the end of a ROM, so that files following this will be\n"
-        "added to a new ROM.\n\n"
-        "The first ROM image can be specified to be a minimal ROM with the -m option.\n"
-        "Otherwise, it will contain code to use a persistent ROM pointer.\n"
-        "The second ROM image will always be minimal, but can be specified to use a\n"
-        "persistent ROM pointer if the -p option is given and the first ROM is not a\n"
-        "minimal ROM.\n\n"
-        "If a minimal ROM image is not used, the -t option can be used to specify\n"
-        "that code to override *TAPE calls should be used. Additionally, the -T option\n"
-        "can be used to add code to trap filing system checks and always report that\n"
-        "the cassette filing system is in use.\n\n"
-        "The workspace for the ROM can be given as a hexadecimal value with the -w option\n"
-        "and specifies the address in memory where the persistent ROM pointer will be\n"
-        "stored; also the code and old BYTEV vector address for *TAPE interception (if\n"
-        "used) and the code and old ARGSV vector address is filing system checks are\n"
-        "intercepted. The workspace defaults to a00.\n\n"
-        "If you specify a pair of addresses separated by a colon (e.g, d3f:ef97) then the\n"
-        "second address will be used for the BYTEV vector address.\n\n"
-        "The -l option determines whether the first ROM will be read again after the\n"
-        "second ROM has been accessed. By default, the first ROM will not be readable\n"
-        "to ensure that files on the second ROM following a split file can be read.\n\n"
-        "If the -s option is specified, files may be split between ROMs.\n\n"
-        "If the -b option is specified, the first ROM will be run when selected.\n"
-        "Additionally, if the -a option is given, the ROM will be made auto-bootable.\n"
-        "If the -B option is also specified, the PAGE for subsequent BASIC programs\n"
-        "can be specified as a hexadecimal number.\n\n"
-        "The -r option is used to specify that the first file must be executed with *RUN.\n"
-        "The -x option indicates that *EXEC is used to execute the first file.\n\n"
-        "The -c option is used to indicate that files should be compressed, and is used\n"
-        "to supply information about the location in memory where they should be\n"
-        "decompressed. This is followed by colon-separated lists of load addresses,\n"
-        "themselves separated using slashes.\n"
-        "Additionally, the compression algorithm can be tuned by specifying the number\n"
-        "of bits to use to store offsets in the compression data, using the -cb option\n"
-        "to do this. The default value of 4 is reasonable for most files.\n\n"
-        "The -P option causes code to be included that writes to the paging register\n"
-        "at 0xfc00. The code reads from the bank info address specified to obtain a base\n"
-        "page number and adds the specified ROM index (base 10) to it in order to swap\n"
-        "in the ROM from the resulting bank number.\n\n"
-        "The -M option allows a custom piece of code to be used to respond to the star\n"
-        "command that is otherwise not used for minimal ROMs.\n"
-        "The -I option is like the -M option except that the custom code is not tied to\n"
-        "a star command and will be run before any other initialisation\n"
-        "code that may also be inserted into the ROM by other options.\n\n"
-        "The -L option allows a custom piece of code to be run after the last file has\n"
-        "been read, accepting the name of the Ophis file to assemble and the name of\n"
-        "the label in the file that is the start of the subroutine to call.\n"
-        )
+    sys.stderr.write(__usage__ % sys.argv[0])
+    sys.stderr.write(__description__)
     sys.exit(1)
 
 if __name__ == "__main__":
@@ -895,6 +917,7 @@ if __name__ == "__main__":
     custom_star_command, custom_star_details = find_option(args, "-M", 2, "")
     custom_init_command, custom_init_details = find_option(args, "-I", 2, "")
     last_file_command, last_file_details = find_option(args, "-L", 2, "")
+    patch_files, patch_file_name = find_option(args, "-pf", 1, "")
     
     if minimal and (tape_override or fscheck_override or use_workspace):
         sys.stderr.write("Cannot override *TAPE or use extra workspace in "
@@ -907,6 +930,7 @@ if __name__ == "__main__":
     uef_file = args[1]
     rom_files = args[2:]
     
+    # Create enough structures for each of the ROM files to be generated.
     for r in range(2, len(rom_files)):
         details.append(details[1].copy())
     
@@ -1098,6 +1122,11 @@ if __name__ == "__main__":
     
     # Create directories as required.
     for rom_file in rom_files:
+    
+        if rom_file.endswith(".uef"):
+            sys.stderr.write("Unexpected file name '%s' passed for a ROM file.\n" % rom_file)
+            sys.exit(1)
+        
         dir_name, file_name = os.path.split(rom_file)
         if dir_name and not os.path.exists(dir_name):
             os.mkdir(dir_name)
@@ -1193,6 +1222,9 @@ if __name__ == "__main__":
         data_addresses.append(get_data_address(header_template % details[r], rom_files[r]))
     
     u = UEFfile.UEFfile(uef_file)
+    
+    if patch_files:
+        patcher.patch_files(u, patch_file_name)
     
     # Convert the UEF chunks to ROM data.
     convert_chunks(u, indices, decomp_addrs, data_addresses, header_templates,
