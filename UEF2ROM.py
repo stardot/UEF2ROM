@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import commands, os, stat, struct, sys, tempfile
 from tools import patcher, UEFfile
-from compressors.distance_pair import compress, decompress
+from compressors import distance_pair
 
 header_template_file = "asm/romfs-template.oph"
 minimal_header_template_file = "asm/romfs-minimal-template.oph"
@@ -37,7 +37,7 @@ __usage__ = \
                [-I <custom routine oph file> <custom routine label>])
            | ([-p] [-t] [-T] [-w <workspace>] [-l])]
           [-s] [-b [-a] [-r|-x] [-B <boot file>]]
-          [-c <load addresses>] [-cb <compression bits>]
+          [-c <load addresses>] [-cbits <compression bits>]
           [-pf <patch file>]
           [-P <bank info address> <ROM index>]
           <UEF file> <ROM file> [<ROM file>]
@@ -89,7 +89,7 @@ to supply information about the location in memory where they should be
 decompressed. This is followed by colon-separated lists of load addresses,
 themselves separated using slashes.
 Additionally, the compression algorithm can be tuned by specifying the number
-of bits to use to store offsets in the compression data, using the -cb option
+of bits to use to store offsets in the compression data, using the -cbits option
 to do this. The default value of 4 is reasonable for most files.
 
 The -P option causes code to be included that writes to the paging register
@@ -115,6 +115,12 @@ def _open(file_name):
 
     return open(os.path.join(res_dir, file_name))
 
+def plural_str(n, singular, plural):
+    if n == 1:
+        return singular
+    else:
+        return plural
+
 class AddressInfo:
 
     def __init__(self, name, addr, src_label, decomp_addr, decomp_end_addr,
@@ -135,18 +141,20 @@ class Block:
 
 class Compressed(Block):
 
-    def __init__(self, data, info, raw_length, offset_bits):
+    def __init__(self, data, info, raw_length, offset_bits, first_block):
         Block.__init__(self, data, info)
+        
         self.raw_length = raw_length
         self.offset_bits = offset_bits
+        self.first_block = first_block
 
 def format_data(data):
 
     s = ""
     i = 0
     while i < len(data):
-        s += ".byte " + ",".join(map(lambda c: "$%02x" % ord(c), data[i:i+24])) + "\n"
-        i += 24
+        s += ".byte " + ",".join(map(lambda c: "$%02x" % ord(c), data[i:i+16])) + "\n"
+        i += 16
     
     return s
 
@@ -208,6 +216,259 @@ def write_block(u, name, load, exec_, data, n, flags, address):
         out = out + struct.pack("<H", u.crc(data))
     
     return out
+
+
+def compress_file_or_blocks(encoded_raw_data, compress_offset_bits, block_size):
+
+    if compress_file_blocks:
+    
+        new_compressed_pieces = distance_pair.compress_blocks(
+            encoded_raw_data, block_size)
+        
+        decoded_raw_data = distance_pair.decompress_blocks(new_compressed_pieces)
+    else:
+        
+        if compress_offset_bits != None:
+            cdata = distance_pair.compress_file(encoded_raw_data,
+                offset_bits = compress_offset_bits)
+        else:
+            compression_results = []
+            
+            for compress_offset_bits in range(1, 8):
+                cdata = distance_pair.compress_file(encoded_raw_data,
+                    offset_bits = compress_offset_bits)
+                
+                l = len(cdata)
+                if compression_results and l > compression_results[0][0]:
+                    break
+                
+                compression_results.append((l, cdata, compress_offset_bits))
+            
+            compression_results.sort()
+            cdata, compress_offset_bits = compression_results[0][1:]
+        
+        new_compressed_pieces = [[compress_offset_bits, encoded_raw_data, cdata]]
+        decoded_raw_data = distance_pair.decompress(cdata, compress_offset_bits)
+    
+    return decoded_raw_data, new_compressed_pieces
+
+
+def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
+                  r, address, end_address, file_addresses, data_addresses,
+                  files, triggers):
+
+    # When compressing, for all files other than the initial boot file,
+    # insert a header with no block data into the stream followed by
+    # compressed data and skip all other blocks in the file.
+    
+    chunk = uef_files[index][0]
+    name, load, exec_, block_data, this, flags = info = read_block(chunk)
+    load = load & 0xffff
+    
+    if decomp_addr is not None:
+        load = decomp_addr
+    
+    if execution_addr is not None:
+        exec_ = execution_addr
+    
+    # Concatenate the raw data from all the chunks in the file.
+    raw_data = ""
+    for chunk in uef_files[index]:
+        raw_data += read_block(chunk)[3]
+    
+    encoded_raw_data = map(ord, raw_data)
+    
+    this = 0
+    compressed_pieces = []
+    blocks = []
+    
+    while encoded_raw_data or compressed_pieces:
+    
+        # Compress the raw data.
+        compress_offset_bits = details[r]["compress offset bits"]
+        
+        decoded_raw_data, new_compressed_pieces = compress_file_or_blocks(
+            encoded_raw_data, compress_offset_bits, compress_block_size)
+        
+        if decoded_raw_data != encoded_raw_data:
+            sys.stderr.write("Error when compressing file %s. "
+                "Decompressed data did not match the original data.\n" % name)
+            sys.exit(1)
+        
+        # Insert new compressed data before any already queued. This handles
+        # the case where the end of a ROM was encountered and the remaining
+        # data needed to be compressed again.
+        compressed_pieces = new_compressed_pieces + compressed_pieces
+        
+        print "Compressing %s from %i bytes to %i %s of compressed data:" % (
+            repr(name)[1:-1], len(encoded_raw_data), len(compressed_pieces),
+            plural_str(len(compressed_pieces), "piece", "pieces"))
+        
+        first_block = True
+        
+        while compressed_pieces:
+        
+            compress_offset_bits, enc_raw_data, encoded_compressed_data = \
+                compressed_pieces.pop(0)
+            
+            clength = len(encoded_compressed_data)
+            
+            print " %i: %i bytes with %i-bit offset at load address $%x." % (
+                this, clength, compress_offset_bits, load)
+            
+            # Create a block with only a header and no data.
+            info = (name, load, exec_, "", this, 0)
+            header = write_block(u, name, load, exec_, "", this, 0, 0)
+            
+            # Calculate the space between the end of the ROM and the
+            # current address, leaving room for an end of ROM marker.
+            remaining = end_address - address - 1
+            
+            if remaining < len(header) + compressed_entry_size + clength:
+            
+                # The file won't fit into the current ROM. Either put it in a
+                # new one, or split it and put the rest of the file there.
+                print "File %s won't fit in the current ROM - %i bytes too long." % (
+                    repr(name), len(header) + compressed_entry_size + clength - remaining)
+                
+                # Try to fit the block header, compressed entry and
+                # part of the compressed file in the remaining space.
+                if split_files and (remaining >= compressed_entry_size + len(header) + 256):
+                
+                    # Decompress the truncated compressed data to find out
+                    # how much raw data needs to be moved to the next ROM.
+                    # Avoid truncating the data in the middle of a special
+                    # byte sequence - this can be two bytes in length
+                    # following a special byte.
+                    
+                    special = encoded_compressed_data[0]
+                    end = remaining - compressed_entry_size - len(header)
+                    while end > 2 and special in encoded_compressed_data[end-2:end]:
+                        end -= 1
+                    
+                    if end == 2:
+                        sys.stderr.write("Failed to split compressed data for %s.\n" % repr(name))
+                        sys.exit(1)
+                    
+                    # Truncate the compressed data and find the decompressed
+                    # data that corresponds to it.
+                    encoded_compressed_data = encoded_compressed_data[:end]
+                    
+                    raw_data_written = distance_pair.decompress(
+                        encoded_compressed_data, offset_bits = compress_offset_bits)
+                    
+                    # Store the raw data that has been handled in a compressed
+                    # block and put the rest back in the byte string for it to
+                    # be compressed again.
+                    encoded_raw_data = enc_raw_data[len(raw_data_written):]
+                    
+                    # Also add the raw data from any other compressed blocks
+                    # in the queue.
+                    for piece in compressed_pieces:
+                        encoded_raw_data += piece[1]
+                    
+                    compressed_pieces = []
+                    
+                    print "Writing %i bytes, leaving %i to be written." % (
+                        len(raw_data_written), len(encoded_raw_data))
+                    
+                    cdata = "".join(map(chr, encoded_compressed_data))
+                    
+                    compressed_block = Compressed(cdata, info,
+                        len(raw_data_written), compress_offset_bits,
+                        first_block)
+                    
+                    if first_block:
+                        file_addresses.append(address)
+                    
+                    # Add information about the truncated block to the list
+                    # of blocks, update the block number and record the
+                    # trigger address.
+                    blocks.append(compressed_block)
+                    this += 1
+                    triggers.append(address + len(header) - 1)
+                    
+                    address += len(header)
+                    
+                    # Adjust the load address for the rest of the file.
+                    load += len(raw_data_written)
+                
+                # Add pending blocks to the list of files, add an address
+                # for the end of ROMFS marker, and clear the list of blocks.
+                files.append(blocks)
+                file_addresses.append(address)
+                blocks = []
+                first_block = True
+                
+                roms.append((files, file_addresses, triggers))
+                
+                # Start a new ROM.
+                files = []
+                file_addresses = []
+                triggers = []
+                end_address = 0xc000
+                
+                r += 1
+                if r >= len(data_addresses):
+                    sys.stderr.write("Not enough ROM files specified.\n")
+                    sys.exit(1)
+                
+                # Update the data address from the start of the new ROM's
+                # data area.
+                address = data_addresses[r]
+                
+                if split_files:
+                    print "Splitting %s - moving %i bytes to the next ROM." % (
+                        repr(name), len(enc_raw_data))
+                    break
+                else:
+                    print "Moving %s to the next ROM." % repr(name)
+                    
+                    # No raw data needs to be recompressed.
+                    encoded_raw_data = []
+                    
+                    if compress_file_blocks:
+                        # Requeue the current piece of compressed data.
+                        compressed_pieces.insert(0, [compress_offset_bits,
+                            enc_raw_data, encoded_compressed_data])
+            
+            else:
+                # Reserve space for the ROM address, decompression start
+                # and finish addresses, source address and compressed data.
+                end_address -= compressed_entry_size + clength
+                
+                # Update the header if this block is the last in the file.
+                if not compressed_pieces:
+                    info = (name, load, exec_, "", this, 0x80)
+                    header = write_block(u, name, load, exec_, "", this, 0x80, 0)
+                
+                cdata = "".join(map(chr, encoded_compressed_data))
+                
+                compressed_block = Compressed(cdata, info, len(enc_raw_data),
+                                              compress_offset_bits, first_block)
+                
+                if first_block:
+                    file_addresses.append(address)
+                
+                if details[r]["decode code"] == "":
+                    sys.stderr.write("Cannot write compressed data for %s to ROM "
+                        "without compression support.\n" % repr(name))
+                    sys.exit(1)
+                
+                blocks.append(compressed_block)
+                triggers.append(address + len(header) - 1)
+                
+                address += len(header)
+                load += len(enc_raw_data)
+                encoded_raw_data = []
+                this += 1
+                first_block = False
+    
+    # Append any remaining blocks.
+    files.append(blocks)
+    
+    return files, [], r, address, end_address, file_addresses, triggers
+
 
 def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                    rom_files):
@@ -335,179 +596,10 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
         
         if decomp_addr != "x":
         
-            # When compressing, for all files other than the initial boot file,
-            # insert a header with no block data into the stream followed by
-            # compressed data and skip all other blocks in the file.
-            
-            chunk = uef_files[index][0]
-            name, load, exec_, block_data, this, flags = info = read_block(chunk)
-            load = load & 0xffff
-            
-            if decomp_addr is not None:
-                load = decomp_addr
-            
-            if execution_addr is not None:
-                exec_ = execution_addr
-            
-            # Concatenate the raw data from all the chunks in the file.
-            raw_data = ""
-            for chunk in uef_files[index]:
-                raw_data += read_block(chunk)[3]
-            
-            this = 0
-            
-            while raw_data:
-            
-                # Create a block with only a header and no data.
-                info = (name, load, exec_, "", this, 0x80)
-                header = write_block(u, name, load, exec_, "", this, 0x80, 0)
-                
-                # Compress the raw data.
-                compress_offset_bits = details[r]["compress offset bits"]
-                encoded_raw_data = map(ord, raw_data)
-                
-                if compress_offset_bits != None:
-                    cdata = compress(encoded_raw_data, offset_bits = compress_offset_bits)
-                else:
-                    compression_results = []
-                    
-                    for compress_offset_bits in range(3, 8):
-                        cdata = compress(encoded_raw_data, offset_bits = compress_offset_bits)
-                        
-                        l = len(cdata)
-                        if compression_results and l > compression_results[0][0]:
-                            break
-                        
-                        compression_results.append((l, cdata, compress_offset_bits))
-                    
-                    compression_results.sort()
-                    cdata, compress_offset_bits = compression_results[0][1:]
-                
-                if decompress(cdata, compress_offset_bits) != encoded_raw_data:
-                    sys.stderr.write("Error when compressing file %s. "
-                        "Decompressed data did not match the original data.\n" % name)
-                    sys.exit(1)
-                else:
-                    cdata = "".join(map(chr, cdata))
-                
-                print "Compressed %s from %i to %i bytes with %i-bit offset at $%x." % (repr(name)[1:-1],
-                    len(raw_data), len(cdata), compress_offset_bits, load)
-                
-                # Calculate the space between the end of the ROM and the
-                # current address, leaving room for an end of ROM marker.
-                remaining = end_address - address - 1
-                
-                if remaining < len(header) + compressed_entry_size + len(cdata):
-                
-                    # The file won't fit into the current ROM. Either put it in a
-                    # new one, or split it and put the rest of the file there.
-                    print "File %s won't fit in the current ROM - %i bytes too long." % (
-                        repr(name), len(header) + compressed_entry_size + len(cdata) - remaining)
-                    
-                    # Try to fit the block header, compressed entry and
-                    # part of the compressed file in the remaining space.
-                    if split_files and (remaining >= compressed_entry_size + len(header) + 256):
-                    
-                        # Decompress the truncated compressed data to find out
-                        # how much raw data needs to be moved to the next ROM.
-                        # Avoid truncating the data in the middle of a special
-                        # byte sequence - this can be two bytes in length
-                        # following a special byte.
-                        
-                        special = cdata[0]
-                        end = remaining - compressed_entry_size - len(header)
-                        while end > 2 and special in cdata[end-2:end]:
-                            end -= 1
-                        
-                        if end == 2:
-                            sys.stderr.write("Failed to split compressed data for %s.\n" % repr(name))
-                            sys.exit(1)
-                        
-                        cdata = cdata[:end]
-                        raw_data_written = decompress(map(ord, cdata),
-                            offset_bits = compress_offset_bits)
-                        
-                        # Discard the raw data that has been handled.
-                        raw_data = raw_data[len(raw_data_written):]
-                        print "Writing %i bytes, leaving %i to be written." % (
-                            len(raw_data_written), len(raw_data))
-                        
-                        # Update the header to indicate that this block is not
-                        # the last.
-                        info = (name, load, exec_, "", this, 0)
-                        header = write_block(u, name, load, exec_, "", this, 0, 0)
-                        
-                        if this == 0:
-                            file_addresses.append(address)
-                        
-                        # Add information about the truncated block to the list
-                        # of blocks, update the block number and record the
-                        # trigger address.
-                        blocks.append(Compressed(cdata, info, len(raw_data_written),
-                                      compress_offset_bits))
-                        this += 1
-                        triggers.append(address + len(header) - 1)
-                        
-                        address += len(header)
-                        
-                        # Adjust the load address for the rest of the file.
-                        load += len(raw_data_written)
-                    
-                    # Add pending blocks to the list of files, add an address
-                    # for the end of ROMFS marker, and clear the list of blocks.
-                    files.append(blocks)
-                    file_addresses.append(address)
-                    blocks = []
-                    
-                    roms.append((files, file_addresses, triggers))
-                    
-                    # Start a new ROM.
-                    files = []
-                    file_addresses = []
-                    triggers = []
-                    end_address = 0xc000
-                    
-                    r += 1
-                    if r >= len(data_addresses):
-                        sys.stderr.write("Not enough ROM files specified.\n")
-                        sys.exit(1)
-                    
-                    # Update the data address from the start of the new ROM's
-                    # data area.
-                    address = data_addresses[r]
-                    
-                    if split_files:
-                        print "Splitting %s - moving %i bytes to the next ROM." % (
-                            repr(name), len(raw_data))
-                        # Ensure that the first block in the new ROM is treated
-                        # as the start of a file if it is not already the first
-                        # block in a file.
-                        if this != 0:
-                            file_addresses.append(address)
-                    else:
-                        print "Moving %s to the next ROM." % repr(name)
-                else:
-                    # Reserve space for the ROM address, decompression start
-                    # and finish addresses, source address and compressed data.
-                    end_address -= compressed_entry_size + len(cdata)
-                    
-                    if this == 0:
-                        file_addresses.append(address)
-                    
-                    if details[r]["decode code"] == "":
-                        sys.stderr.write("Cannot write compressed data for %s to ROM "
-                            "without compression support.\n" % repr(name))
-                        sys.exit(1)
-                
-                    blocks.append(Compressed(cdata, info, len(raw_data),
-                                             compress_offset_bits))
-                    triggers.append(address + len(header) - 1)
-                    
-                    address += len(header)
-                    raw_data = ""
-            
-            files.append(blocks)
-            blocks = []
+            files, blocks, r, address, end_address, file_addresses, triggers = \
+                compress_file(uef_files, index, decomp_addr, execution_addr,
+                              details, roms, r, address, end_address,
+                              file_addresses, data_addresses, files, triggers)
             
             # Examine the next file.
             continue
@@ -636,16 +728,19 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                 
                     os.write(tf, "; %s %x\n" % (repr(name)[1:-1], this))
                     
-                    next_address = file_addresses.pop(0)
+                    if block_info.first_block:
+                        next_address = file_addresses.pop(0)
+                    
                     file_details.append((name, load, block_info))
                     length = 0
                     
                     data = write_block(u, name, load, exec_, block_data, this, flags, next_address)
                     os.write(tf, format_data(data))
                     
-                    print " %s starts at $%x and ends at $%x, next file at $%x" % (
-                        repr(name), address, address + len(data),
-                        next_address)
+                    if block_info.first_block:
+                        print " %s starts at $%x and ends at $%x, next file at $%x" % (
+                            repr(name), address, address + len(data),
+                            next_address)
                 
                 elif this == 0 or last or first_block:
                     os.write(tf, "; %s %x\n" % (repr(name)[1:-1], this))
@@ -908,7 +1003,8 @@ if __name__ == "__main__":
     custom_boot, custom_boot_page = find_option(args, "-B", 1, "")
     compress_files, hints = find_option(args, "-c", 1)
     compress_workspace, compress_workspace_start = find_option(args, "-C", 1, "90")
-    compress_bits, compress_offset_bits = find_option(args, "-cb", 1, None)
+    compress_bits, compress_offset_bits = find_option(args, "-cbits", 1, None)
+    compress_file_blocks, compress_block_size = find_option(args, "-cblk", 1, 512)
     f, files = find_option(args, "-f", 1)
     loop = find_option(args, "-l", 0)
     minimal = find_option(args, "-m", 0)
@@ -1016,6 +1112,8 @@ if __name__ == "__main__":
                     
                     if compress_offset_bits != None:
                         compress_offset_bits = int(compress_offset_bits)
+                    
+                    compress_block_size = int(compress_block_size)
                     
                     dp_dict = {
                         "src": cws, "src_low": cws, "src_high": cws + 1,
@@ -1242,9 +1340,11 @@ if __name__ == "__main__":
             continue
         
         length = os.stat(rom_file)[stat.ST_SIZE]
-        remainder = length % 16384
-        if remainder != 0:
+        used = length % 16384
+        if used != 0:
+            print "Free space in %s: %i %s." % (rom_file, 16384 - used,
+                plural_str(16384 - used, "byte", "bytes"))
             data = open(rom_file, "rb").read()
-            open(rom_file, "wb").write(data + ("\xff" * (16384 - remainder))) 
+            open(rom_file, "wb").write(data + ("\xff" * (16384 - used))) 
     
     sys.exit()
