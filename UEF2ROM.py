@@ -242,10 +242,10 @@ def compress_file_or_blocks(encoded_raw_data, compress_offset_bits, block_size):
                     offset_bits = compress_offset_bits)
                 
                 l = len(cdata)
-                compression_results.append((l, cdata, compress_offset_bits))
+                compression_results.append((l, compress_offset_bits, cdata))
             
             compression_results.sort()
-            cdata, compress_offset_bits = compression_results[0][1:]
+            l, compress_offset_bits, cdata = compression_results[0]
         
         new_compressed_pieces = [[compress_offset_bits, encoded_raw_data, cdata]]
         decoded_raw_data = distance_pair.decompress(cdata, compress_offset_bits)
@@ -433,10 +433,9 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
                     # No raw data needs to be recompressed.
                     encoded_raw_data = []
                     
-                    if compress_file_blocks:
-                        # Requeue the current piece of compressed data.
-                        compressed_pieces.insert(0, [compress_offset_bits,
-                            enc_raw_data, encoded_compressed_data])
+                    # Requeue the current piece of compressed data.
+                    compressed_pieces.insert(0, [compress_offset_bits,
+                        enc_raw_data, encoded_compressed_data])
             
             else:
                 # Reserve space for the ROM address, decompression start
