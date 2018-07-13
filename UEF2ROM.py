@@ -141,12 +141,15 @@ class Block:
 
 class Compressed(Block):
 
-    def __init__(self, data, info, raw_length, offset_bits, first_block):
+    def __init__(self, data, info, raw_length, offset_bits, first_block,
+                       short_header):
+    
         Block.__init__(self, data, info)
         
         self.raw_length = raw_length
         self.offset_bits = offset_bits
         self.first_block = first_block
+        self.short_header = short_header
 
 def format_data(data):
 
@@ -210,10 +213,10 @@ def write_block(u, name, load, exec_, data, n, flags, address):
     
     if data:
         # Block data
-        out = out + data
+        out += data
         
         # Block CRC
-        out = out + struct.pack("<H", u.crc(data))
+        out += struct.pack("<H", u.crc(data))
     
     return out
 
@@ -310,12 +313,16 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
             
             clength = len(encoded_compressed_data)
             
-            print " %i: %i bytes with %i-bit offset at load address $%x." % (
+            print " %02x: %i bytes with %i-bit offset at load address $%x." % (
                 this, clength, compress_offset_bits, load)
             
             # Create a block with only a header and no data.
-            info = (name, load, exec_, "", this, 0)
-            header = write_block(u, name, load, exec_, "", this, 0, 0)
+            if first_block or not compressed_pieces:
+                info = (name, load, exec_, "", this, 0x0)
+                header = write_block(u, name, load, exec_, "", this, 0x0, 0)
+            else:
+                info = (name, load, exec_, "", this, 0)
+                header = "\x23"
             
             # Calculate the space between the end of the ROM and the
             # current address, leaving room for an end of ROM marker.
@@ -375,7 +382,7 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
                     
                     compressed_block = Compressed(cdata, info,
                         len(raw_data_written), compress_offset_bits,
-                        first_block)
+                        first_block, header == "\x23")
                     
                     if first_block:
                         file_addresses.append(address)
@@ -444,7 +451,7 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
                 cdata = "".join(map(chr, encoded_compressed_data))
                 
                 compressed_block = Compressed(cdata, info, len(enc_raw_data),
-                                              compress_offset_bits, first_block)
+                    compress_offset_bits, first_block, header == "\x23")
                 
                 if first_block:
                     file_addresses.append(address)
@@ -733,7 +740,11 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                     file_details.append((name, load, block_info))
                     length = 0
                     
-                    data = write_block(u, name, load, exec_, block_data, this, flags, next_address)
+                    if block_info.short_header:
+                        data = "\x23"
+                    else:
+                        data = write_block(u, name, load, exec_, block_data, this, flags, next_address)
+                    
                     os.write(tf, format_data(data))
                     
                     if block_info.first_block:
