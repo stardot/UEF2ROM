@@ -297,7 +297,7 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
         # data needed to be compressed again.
         compressed_pieces = new_compressed_pieces + compressed_pieces
         
-        print "Compressing %s from %i bytes to %i %s of compressed data:" % (
+        print "Compressed %s from %i bytes to %i %s of compressed data:" % (
             repr(name)[1:-1], len(encoded_raw_data), len(compressed_pieces),
             plural_str(len(compressed_pieces), "piece", "pieces"))
         
@@ -330,7 +330,9 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
                 
                 # Try to fit the block header, compressed entry and
                 # part of the compressed file in the remaining space.
-                if split_files and (remaining >= compressed_entry_size + len(header) + 256):
+                has_free_space = (remaining >= compressed_entry_size + len(header) + 256)
+                
+                if split_files and has_free_space:
                 
                     # Decompress the truncated compressed data to find out
                     # how much raw data needs to be moved to the next ROM.
@@ -414,9 +416,9 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
                 # data area.
                 address = data_addresses[r]
                 
-                if split_files:
+                if split_files and has_free_space:
                     print "Splitting %s - moving %i bytes to the next ROM." % (
-                        repr(name), len(enc_raw_data))
+                        repr(name), len(encoded_raw_data))
                     break
                 else:
                     print "Moving %s to the next ROM." % repr(name)
