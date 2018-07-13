@@ -239,9 +239,6 @@ def compress_file_or_blocks(encoded_raw_data, compress_offset_bits, block_size):
                     offset_bits = compress_offset_bits)
                 
                 l = len(cdata)
-                if compression_results and l > compression_results[0][0]:
-                    break
-                
                 compression_results.append((l, cdata, compress_offset_bits))
             
             compression_results.sort()
