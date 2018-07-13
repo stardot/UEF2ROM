@@ -17,12 +17,65 @@
 
 import sys
 
-def compress(data, offset_bits = 4, window = "output"):
+def compress_blocks(data, block_size = 256, window = "output"):
+
+    """Splits the data into blocks of a given size and compresses them using
+    all possible offset bits, retaining the smallest compressed data and the
+    offset bits for each block and merging consecutive blocks with the same
+    offset bits. Returns a list of pieces, where each piece contains the
+    number of offset bits, the original data and the compressed data."""
+    
+    pieces = []
+    current_bits = 0
+    
+    # Use the same special byte in all blocks so that we can concatenate blocks
+    # with the same offset bits together.
+    special = find_least_used(data)
+    
+    i = 0
+    while i < len(data):
+    
+        block = data[i:i + block_size]
+        best = []
+        
+        for offset_bits in range(1, 8):
+            output = compress(block, special, offset_bits, window)
+            
+            if not best or len(output) < len(best[2]):
+                best = [offset_bits, block, output]
+        
+        offset_bits, block, output = best
+        
+        if offset_bits == current_bits:
+            # Discard the byte declaring the special value.
+            output.pop(0)
+            
+            # Append the input and output to the data in the last piece.
+            piece = pieces.pop()
+            piece[1] += block
+            piece[2] += output
+        else:
+            piece = best
+            current_bits = offset_bits
+        
+        pieces.append(piece)
+        
+        i += block_size
+    
+    return pieces
+
+
+def compress_file(data, offset_bits = 4, window = "output"):
+
+    special = find_least_used(data)
+    return compress(data, special, offset_bits, window)
+
+
+def compress(data, special, offset_bits = 4, window = "output"):
 
     max_offset = (1 << offset_bits) - 1
     max_length = (1 << (7 - offset_bits)) + 2
     
-    special = find_least_used(data)
     output = [special]
     
     i = 0
@@ -62,31 +115,35 @@ def compress(data, offset_bits = 4, window = "output"):
             # If there is no match, or the match would be inefficient to record,
             # then just include the next byte in the window.
             
-            # If the special byte occurs in the input, encode it using a
-            # special sequence.
             if data[i] == special:
+                # If the special byte occurs in the input, encode it using a
+                # special sequence.
                 output += [special, 0]
                 i += 1
             else:
+                # All other bytes are encoded as themselves.
                 output.append(data[i])
                 i += 1
         
         else:
             # Otherwise, encode the special byte, offset from the end of the
             # window and length, skipping the corresponding number of matching
-            # bytes in the input stream. Subtracting 3 from the length in the
-            # second case but nothing from the offset avoids the possibility of
-            # encoding a zero in the second byte, confusing the first two cases.
+            # bytes in the input stream. Subtracting 3 from the length but
+            # nothing from the offset avoids the possibility of encoding a zero
+            # in the second byte, confusing the first two cases.
             #
             # special 0                 -> special
             #
             # Near references are defined using the number of bits passed in
             # the offset_bits parameter. These vary from 2 to 5:
             #
+            # special 0llllllo          -> length (3-66), offset (1)
             # special 0llllloo          -> length (3-34), offset (1-3)
             # special 0llllooo          -> length (3-18), offset (1-7)
             # special 0llloooo          -> length (3-10), offset (1-15)
             # special 0llooooo          -> length (3-6), offset (1-31)
+            # special 0loooooo          -> length (3-4), offset (1-63)
+            # special 0ooooooo          -> length (3), offset (1-127)
             #
             # Far references:
             # special 1ooooooo llllllll -> offset (1-128), length (4-259)
@@ -241,6 +298,22 @@ def decompress(data, offset_bits = 4, window = "output", stop_at = None):
     return output
 
 
+def decompress_blocks(pieces, window = "output"):
+
+    """Decompresses and returns compressed data stored in the list of pieces,
+    where each piece contains the number of offset bits to use and compressed
+    data stored as a list of integers."""
+    
+    output = []
+    
+    for piece in pieces:
+    
+        offset_bits, data, cdata = piece
+        output += decompress(cdata, offset_bits, window)
+    
+    return output
+
+
 def merge(data):
 
     # Take the lowest 4 bits of each byte and pack them together, then take
@@ -322,10 +395,15 @@ if __name__ == "__main__":
     except ValueError:
         offset_bits = 4
     
-    print "Using %i bits for offsets." % offset_bits
+    try:
+        bsize = args.index("--block-size")
+        block_size = int(args[bsize + 1])
+        args = args[:bsize] + args[bsize + 2:]
+    except ValueError:
+        block_size = 256
     
     if len(args) != 4:
-        sys.stderr.write("Usage: %s --compress|--decompress [--output|--compressed] [--merge] [--bits <bits>] <input file> <output file>\n" % sys.argv[0])
+        sys.stderr.write("Usage: %s --compress|--decompress|--test-blocks [--output|--compressed] [--merge] [--bits <bits>] [--block-size <size>] <input file> <output file>\n" % sys.argv[0])
         sys.exit(1)
     
     command = args[1]
@@ -336,12 +414,13 @@ if __name__ == "__main__":
     
     if command == "--compress":
     
+        print "Using %i bits for offsets." % offset_bits
         print "Input size:", len(data)
         if do_merge:
             original_data = data
             data = merge(data)
         
-        c = compress(data, offset_bits = offset_bits, window = mode)
+        c = compress_file(data, offset_bits = offset_bits, window = mode)
         print "Compressed:", len(c)
         try:
             out_f.write("".join(map(chr, c)))
@@ -365,12 +444,35 @@ if __name__ == "__main__":
             c, d = decompress(c, mode, stop_at = i)
             hexdump(c[:i + 3])
     
-    else:
+    elif command == "--decompress":
+    
         print "Input size:", len(data)
-        d = decompress(data, mode)
+        d = decompress(data, offset_bits = offset_bits, window = mode)
         if do_merge:
             d = unmerge(d)
         print "Decompressed:", len(d)
         out_f.write("".join(map(chr, d)))
+    
+    elif command == "--test-blocks":
+    
+        print "Input size:", len(data)
+        
+        pieces = compress_blocks(data, block_size, window = mode)
+        print "Compressed:", sum(map(lambda piece: len(piece[1]), pieces))
+        print "(%i pieces)" % len(pieces)
+        
+        d = decompress_blocks(pieces, window = mode)
+        out_f.write("".join(map(chr, d)))
+        
+        if data != d:
+            i = 0
+            while i < len(data) and i < len(d) and data[i] == d[i]:
+                i += 1
+            
+            print "Data at %i compressed incorrectly." % i
+    
+    else:
+        sys.stderr.write("Unknown command '%s'.\n" % command)
+        sys.exit(1)
     
     sys.exit()
