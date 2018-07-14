@@ -32,6 +32,45 @@ decompress: ; src=compressed data, dest=destination start
             ; trigger offset=index into compressed entries
 
     ldy #0
+
+;   ; Unused support for uncompressed data within the framework for compressed
+;   ; data.
+;
+;    ldx trigger_offset
+;    lda offset_bits_and_count_masks,x
+;    cmp #$ff                            ; Check for an invalid count mask and
+;    bne decompress_start                ; decompress the data if not found.
+;
+;    ; Uncompressed data copy
+;
+;    decompress_raw_data_loop:
+;        lda (src),y
+;        sta (dest),y
+;
+;        inc src_low
+;        bne decompress_raw_data_loop0
+;        inc src_high
+;
+;        decompress_raw_data_loop0:
+;        inc dest_low
+;        bne decompress_raw_data_loop1
+;        inc dest_high
+;
+;        decompress_raw_data_loop1:
+;        ldx trigger_offset
+;        lda dest_low
+;        cmp dest_end_addresses,x
+;        bne decompress_raw_data_loop
+;        inx
+;        lda dest_high
+;        cmp dest_end_addresses,x
+;        bne decompress_raw_data_loop
+;
+;        clc
+;        rts
+
+    decompress_start:
+
     lda (src),y                     ; data[i]
     sta special
 
@@ -66,22 +105,22 @@ decompress: ; src=compressed data, dest=destination start
                 cmp #$80
                 bcs far_reference
 
-                    sta offset  ; the offset is a combined offset-count value
+                    sta offset  ; The offset is a combined offset-count value.
 
                     ldx trigger_offset
-                    and offset_bits_and_count_masks,x
+                    and offset_bits_and_count_masks,x ; the shifted count
 
                     inx
-                    ldy offset_bits_and_count_masks,x
+                    ldy offset_bits_and_count_masks,x ; number of bits to shift
                     offset_shift_loop:
                         lsr
                         dey
                         bne offset_shift_loop
 
                     adc #3      ; count = (offset >> offset_bits) + 3
-                    tay         ; save the number of bytes to copy
+                    tay         ; Save the number of bytes to copy.
 
-                    lda offset
+                    lda offset  ; Retrieve the offset-count value.
                     dex
                     ora offset_bits_and_count_masks,x   ; equivalent to ANDing
                     eor offset_bits_and_count_masks,x   ; with NOT count_mask

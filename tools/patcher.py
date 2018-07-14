@@ -53,14 +53,22 @@ def patch_files(u, patch_file):
         
         bytes = ""
         for byte in data.split(","):
-            bytes += chr(int(byte, 16))
-        
-        print "Replacing %i bytes at 0x%x with %i bytes." % (span_length,
-            offset, len(bytes))
+            if "*" in byte:
+                byte, count = byte.split("*")
+                if count.startswith("0x"):
+                    count = int(count, 16)
+                else:
+                    count = int(count, 10)
+            else:
+                count = 1
+            bytes += chr(int(byte, 16)) * count
         
         # Obtain the information about the file at the specified position in the
         # UEF file.
         info = u.contents[position]
+        
+        print "%i (%s): Replacing %i bytes at 0x%x with %i bytes." % (position,
+            repr(info["name"]), span_length, offset, len(bytes))
         
         # Obtain the file data and patch it with the new data.
         file_data = info["data"]
