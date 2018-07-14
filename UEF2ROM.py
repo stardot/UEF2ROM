@@ -225,6 +225,7 @@ def compress_file_or_blocks(encoded_raw_data, compress_offset_bits, block_size):
 
     if compress_file_blocks:
     
+        # Obtain a list of pieces for processing.
         new_compressed_pieces = distance_pair.compress_blocks(
             encoded_raw_data, block_size)
         
@@ -235,20 +236,41 @@ def compress_file_or_blocks(encoded_raw_data, compress_offset_bits, block_size):
             cdata = distance_pair.compress_file(encoded_raw_data,
                 offset_bits = compress_offset_bits)
         else:
-            compression_results = []
+            # Construct a list of tuples containing the length of compressed
+            # data, the number of offset bits used to compress it and the data
+            # itself.
             
-            for compress_offset_bits in range(1, 8):
+            dlength = len(encoded_raw_data)
+            compression_results = []
+            # Put a default entry in the list corresponding to uncompressed
+            # data.
+            #compression_results.append((dlength, 0, encoded_raw_data))
+            
+            for compress_offset_bits in range(3, 8):
                 cdata = distance_pair.compress_file(encoded_raw_data,
                     offset_bits = compress_offset_bits)
                 
                 l = len(cdata)
+                
+                #if l >= dlength:
+                #    continue
+                
                 compression_results.append((l, compress_offset_bits, cdata))
             
             compression_results.sort()
             l, compress_offset_bits, cdata = compression_results[0]
         
+        # If returning a compressed file, create a list containing only one
+        # piece for processing.
         new_compressed_pieces = [[compress_offset_bits, encoded_raw_data, cdata]]
-        decoded_raw_data = distance_pair.decompress(cdata, compress_offset_bits)
+        
+        if compress_offset_bits == 0:
+            # If the uncompressed data was shortest then return it instead of
+            # compressed data. This is currently unused but handled in the
+            # compress_file function.
+            decoded_raw_data = encoded_raw_data
+        else:
+            decoded_raw_data = distance_pair.decompress(cdata, compress_offset_bits)
     
     return decoded_raw_data, new_compressed_pieces
 
@@ -300,7 +322,7 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
         # data needed to be compressed again.
         compressed_pieces = new_compressed_pieces + compressed_pieces
         
-        print "Compressed %s from %i bytes to %i %s of compressed data:" % (
+        print "Attempted to compress %s from %i bytes to %i %s of compressed data:" % (
             repr(name)[1:-1], len(encoded_raw_data), len(compressed_pieces),
             plural_str(len(compressed_pieces), "piece", "pieces"))
         
@@ -313,8 +335,12 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
             
             clength = len(encoded_compressed_data)
             
-            print " %02x: %i bytes with %i-bit offset at load address $%x." % (
-                this, clength, compress_offset_bits, load)
+            if compress_offset_bits != 0:
+                print " %02x: %i bytes with %i-bit offset at load address $%x." % (
+                    this, clength, compress_offset_bits, load)
+            else:
+                print " %02x: %i bytes of uncompressed data at load address $%x." % (
+                    this, clength, load)
             
             # Create a block with only a header and no data.
             if first_block or not compressed_pieces:
