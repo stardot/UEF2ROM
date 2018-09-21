@@ -44,12 +44,5 @@ tape_init:
     rts
 
 new_bytev:
-    cmp #140
-    beq no_tape
-    jmp (old_bytev)
-    no_tape:
-;    ldx #0
-;    dex
-;    clc
-    rts
+%(bytev code)s
 new_bytev_end:

@@ -1,0 +1,2 @@
+    cmp #140
+    beq no_tape

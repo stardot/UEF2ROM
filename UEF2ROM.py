@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import commands, os, stat, struct, sys, tempfile
-from tools import patcher, UEFfile
+from tools import format_data, joystick, patcher, UEFfile
 from compressors import distance_pair
 
 header_template_file = "asm/romfs-template.oph"
@@ -1055,6 +1055,7 @@ if __name__ == "__main__":
     custom_init_command, custom_init_details = find_option(args, "-I", 2, "")
     last_file_command, last_file_details = find_option(args, "-L", 2, "")
     patch_files, patch_file_name = find_option(args, "-pf", 1, "")
+    joystick_enabled, joystick_info = find_option(args, "-j", 1, "")
     
     if minimal and (tape_override or fscheck_override or use_workspace):
         sys.stderr.write("Cannot override *TAPE or use extra workspace in "
@@ -1310,7 +1311,7 @@ if __name__ == "__main__":
     details[0]["bytev"] = workspace_end
     details[0]["tape workspace"] = workspace_end + 2
     
-    if tape_override:
+    if tape_override or joystick_enabled:
         # Allow the vector to point to somewhere other than the code itself. This
         # enables us to borrow a JMP instruction elsewhere in memory to hide the
         # true location of our code.
@@ -1318,13 +1319,98 @@ if __name__ == "__main__":
             tape_workspace_call_address = details[0]["tape workspace"]
         
         if tape_workspace_call_address >= 0xc000:
-            details[0]["tape init"] = _open("asm/tape_init_via_os_rom.oph").read()
+            tape_init_code = _open("asm/tape_init_via_os_rom.oph").read()
         else:
-            details[0]["tape init"] = _open("asm/tape_init.oph").read()
+            tape_init_code = _open("asm/tape_init.oph").read()
         
         details[0]["call tape init"] = "    jsr tape_init"
-        workspace_end += 10
+        # Move the end of the workspace to include the space for the old BYTEV
+        # address and the bytes of the tape and joystick code in the new
+        # routine.
+        workspace_end += 2  # old BYTEV address
+        workspace_end += 4  # core routine
         
+        bytev_fragments = {
+            "bytev": details[0]["bytev"],
+            "bytev address": tape_workspace_call_address,
+            "bytev tape check": "",
+            "bytev analogue check": "",
+            "bytev analogue routines": ""
+            }
+        
+        if tape_override:
+            bytev_fragments["bytev tape check"] = _open("asm/bytev_tape_code.oph").read()
+            workspace_end += 4
+        
+        if joystick_enabled:
+            analogue_code = (
+                "    cmp #129\n"
+                "    bne return_via_old_bytev\n"
+                "    pha\n"
+                )
+            workspace_end += 5  # main check
+            
+            horizontal = vertical = False
+            
+            for key_info in joystick_info.split(":"):
+                if key_info:
+                    direction, keycode = key_info.split("=")
+                    direction = direction.lower()
+                    if direction in "lr": horizontal = True
+                    if direction in "du": vertical = True
+                    key_check_code, i = joystick.key_check(direction, keycode)
+                    analogue_code += key_check_code
+                    workspace_end += i
+            
+            analogue_code += (
+                "    return_via_old_bytev_pop:\n"
+                "    pla\n"
+                )
+            workspace_end += 1
+            
+            analogue_routines = (
+                "    bytev_key_pressed:\n"
+                "    pla\n"
+                "    ldx #255\n"
+                "    ldy #255\n"
+                "    sec\n"
+                "    rts\n"
+                )
+            workspace_end += 7
+            
+            if horizontal or vertical:
+                analogue_routines += (
+                    "bytev_read_analogue:\n"
+                    "    sta $fc70\n"
+                    "    lda $fc70\n"
+                    "    rts\n"
+                    )
+                workspace_end += 7
+            
+            bytev_fragments["bytev analogue check"] = analogue_code
+            bytev_fragments["bytev analogue routines"] = analogue_routines
+        
+        # Paste the fragments into the code to create a file to assemble.
+        bytev_code = _open("asm/bytev_code.oph").read() % bytev_fragments
+        
+        # Create and write the source file.
+        tf, temp_file = tempfile.mkstemp(suffix=os.extsep+'oph')
+        os.write(tf, bytev_code)
+        os.close(tf)
+        
+        # Assemble the bytev code.
+        tbf, temp_bytev_file = tempfile.mkstemp(suffix=os.extsep+'bytev')
+        
+        if os.system("ophis -o " + commands.mkarg(temp_bytev_file) + " " + commands.mkarg(temp_file)) != 0:
+            sys.exit(1)
+        
+        os.remove(temp_file)
+        bytev_asm_code = open(temp_bytev_file, "rb").read()
+        os.remove(temp_bytev_file)
+        
+        details[0]["tape init"] = tape_init_code % {
+            "bytev code": format_data(bytev_asm_code)
+            }
         details[0]["tape workspace call address"] = tape_workspace_call_address
     else:
         details[0]["call tape init"] = ""
@@ -1346,6 +1432,7 @@ if __name__ == "__main__":
         details[0]["fscheck init"] = ""
         details[0]["fscheck workspace call address"] = 0
     
+    print "Workspace starts at $%04x. Ends at $%04x." % (workspace, workspace_end),
     print (workspace_end - workspace), "bytes of workspace used."
     
     # Calculate the starting address of the ROM data by assembling the ROM
