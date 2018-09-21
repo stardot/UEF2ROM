@@ -1,0 +1,17 @@
+.org $%(bytev address)x
+
+.alias old_bytev $%(bytev)x
+
+%(bytev tape check)s
+%(bytev analogue check)s
+
+    return_via_old_bytev:
+    jmp (old_bytev)
+
+    no_tape:
+;    ldx #0
+;    dex
+;    clc
+    rts
+
+%(bytev analogue routines)s
