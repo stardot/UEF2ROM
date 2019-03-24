@@ -36,7 +36,7 @@ __usage__ = \
           [(-m [-M <custom routine oph file> <custom routine label>]
                [-I <custom routine oph file> <custom routine label>])
            | ([-p] [-t] [-T] [-w <workspace>] [-l])]
-          [-s] [-b [-a] [-r|-x] [-B <boot file>]]
+          [-s] [-b [-a] [-r|-x] [-B <boot page>]]
           [-c <load addresses>] [-cbits <compression bits>]
           [-pf <patch file>]
           [-P <bank info address> <ROM index>]
