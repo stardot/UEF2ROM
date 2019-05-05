@@ -18,8 +18,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 __author__ = "David Boddie <david@boddie.org.uk>"
-__date__ = "2016-12-12"
-__version__ = "0.2"
+__date__ = "2019-05-05"
+__version__ = "0.3"
 __license__ = "GNU General Public License (version 3 or later)"
 
 import sys
@@ -27,18 +27,27 @@ from tools import makedfs, UEFfile
 
 if __name__ == "__main__":
 
-    if not 3 <= len(sys.argv) <= 4:
-        sys.stderr.write("Usage: %s <ssd file> <uef file> [file0,...]\n" % sys.argv[0])
-        sys.stderr.write("Usage: %s -l <ssd file>\n" % sys.argv[0])
+    args = sys.argv[:]
+    
+    if "-s" in args:
+        at = args.index("-s")
+        strip_prefix = args[at + 1]
+        args = args[:at] + args[at + 2:]
+    else:
+        strip_prefix = "$."
+    
+    if not 3 <= len(args) <= 4:
+        sys.stderr.write("Usage: %s <ssd file> <uef file> [file0,...]\n" % args[0])
+        sys.stderr.write("Usage: %s -l <ssd file>\n" % args[0])
         sys.exit(1)
     
-    if sys.argv[1] == "-l":
+    if args[1] == "-l":
         print_catalogue = True
-        ssd_file = sys.argv[2]
+        ssd_file = args[2]
     else:
         print_catalogue = False
-        ssd_file = sys.argv[1]
-        uef_file = sys.argv[2]
+        ssd_file = args[1]
+        uef_file = args[2]
     
     cat = makedfs.Catalogue(open(ssd_file))
     if ssd_file.endswith(".dsd"):
@@ -59,8 +68,8 @@ if __name__ == "__main__":
         
         sys.exit()
     
-    if len(sys.argv) == 4:
-        names = sys.argv[3].split(",")
+    if len(args) == 4:
+        names = args[3].split(",")
     else:
         names = []
         for file in disk_files:
@@ -78,8 +87,9 @@ if __name__ == "__main__":
             sys.stderr.write("File '%s' not found in the disk catalogue.\n" % name)
             sys.exit(1)
         
-        if "$." in name:
-            name = name.split(".")[-1]
+        if name.startswith(strip_prefix):
+            name = name.lstrip(strip_prefix)
+        
         info = (name, file.load_address, file.execution_address, file.data)
         files.append(info)
     
