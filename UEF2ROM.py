@@ -36,6 +36,7 @@ __usage__ = \
           [(-m [-M <custom routine oph file> <custom routine label>]
                [-I <custom routine oph file> <custom routine label>])
            | ([-p] [-t] [-T] [-w <workspace>] [-l])]
+          [-p1]
           [-s] [-b [-a] [-r|-x] [-B <boot page>]]
           [-c <load addresses>] [-cbits <compression bits>]
           [-pf <patch file>]
@@ -69,6 +70,9 @@ intercepted. The workspace defaults to a00.
 
 If you specify a pair of addresses separated by a colon (e.g, d3f:ef97) then the
 second address will be used for the BYTEV vector address.
+
+The -p1 option causes code to be inserted into the boot sequence that disables
+the Plus 1 before loading any files.
 
 The -l option determines whether the first ROM will be read again after the
 second ROM has been accessed. By default, the first ROM will not be readable
@@ -1003,7 +1007,8 @@ if __name__ == "__main__":
          "custom command code": "",
          "custom init code": "",
          "custom init code jump": "",
-         "custom boot page command": ""},
+         "custom boot page command": "",
+         "plus one disable": ""},
         {"title": '.byte "", 0', # '.byte "Test ROM", 0',
          "version string": '.byte "", 0', # '.byte "1.0", 0',
          "version": ".byte 1",
@@ -1030,7 +1035,8 @@ if __name__ == "__main__":
          "custom command code": "",
          "custom init code": "",
          "custom init code jump": "",
-         "custom boot page command": ""}
+         "custom boot page command": "",
+         "plus one disable": ""}
         ]
     
     autobootable = find_option(args, "-a", 0)
@@ -1056,11 +1062,15 @@ if __name__ == "__main__":
     last_file_command, last_file_details = find_option(args, "-L", 2, "")
     patch_files, patch_file_name = find_option(args, "-pf", 1, "")
     joystick_enabled, joystick_info = find_option(args, "-j", 1, "")
+    plus1_disable = find_option(args, "-p1", 0)
     
     if minimal and (tape_override or fscheck_override or use_workspace):
         sys.stderr.write("Cannot override *TAPE or use extra workspace in "
                          "minimal ROMs.\n")
         sys.exit(1)
+    
+    if plus1_disable:
+        bootable = True
     
     if len(args) < 3:
         usage()
@@ -1190,6 +1200,8 @@ if __name__ == "__main__":
                 # Minimal ROMs only need to call *ROM when booting.
                 details[0]["init romfs code"] = _open("asm/init_romfs.oph").read()
             
+            boot_commands = []
+            
             if custom_boot:
                 if custom_boot_page.startswith("0x"):
                     custom_boot_page = custom_boot_page[2:]
@@ -1197,7 +1209,17 @@ if __name__ == "__main__":
                     custom_boot_page = custom_boot_page[1:]
                 
                 # Add quotes for assember strings.
-                details[0]["custom boot page command"] = '"PAGE=&%X:", ' % int(custom_boot_page, 16)
+                boot_commands.append('"PAGE=&%X|M"' % int(custom_boot_page, 16))
+            
+            details[0]["custom boot page command"] = ", ".join(boot_commands)
+            
+            if plus1_disable:
+                details[0]["plus one disable"] = "\n".join([
+                    "lda #163", "ldx #128", "ldy #1", "jsr $fff4",
+                    "lda #$d6", "sta $212",
+                    "lda #$f1", "sta $213",
+                    "lda #0", "sta $2ac"
+                    ])
         else:
             details[0]["boot code"] = "pla\npla\nlda #0\nrts"
         
