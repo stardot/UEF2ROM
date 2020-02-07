@@ -18,4 +18,4 @@ jmp $fff7       ; (OSCLI - BASIC)
 basic_text:
 .byte "BASIC", 13
 key9_text:
-.byte "KEY9 ", %(custom boot page command)s, %(run first file)s, "|M", 13
+.byte "KEY9 ", %(boot commands)s, "|M", 13

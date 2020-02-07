@@ -541,11 +541,13 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
         # again after entering BASIC.
         
         if star_run:
-            details[0]["run first file"] = ('"*/%s"' % names[indices[0]])
+            details[0]["boot commands"].append('"*/%s"' % names[indices[0]])
         elif star_exec:
-            details[0]["run first file"] = ('"*EXEC", 34, "%s", 34' % names[indices[0]])
+            details[0]["boot commands"].append('"*EXEC", 34, "%s", 34' % names[indices[0]])
         else:
-            details[0]["run first file"] = ('"CHAIN", 34, "%s", 34' % names[indices[0]])
+            details[0]["boot commands"].append('"CHAIN", 34, "%s", 34' % names[indices[0]])
+        
+        details[0]["boot commands"] = ", ".join(details[0]["boot commands"])
         
         tof, temp_oph_file = tempfile.mkstemp(suffix=os.extsep+'oph')
         tf, temp_boot_file = tempfile.mkstemp(suffix=os.extsep+'boot')
@@ -1211,7 +1213,7 @@ if __name__ == "__main__":
                 # Add quotes for assember strings.
                 boot_commands.append('"PAGE=&%X|M"' % int(custom_boot_page, 16))
             
-            details[0]["custom boot page command"] = ", ".join(boot_commands)
+            details[0]["boot commands"] = boot_commands
             
             if plus1_disable:
                 details[0]["plus one disable"] = "\n".join([
