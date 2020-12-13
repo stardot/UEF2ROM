@@ -137,7 +137,7 @@ rom_command:
 ; Custom command code is included when the -M option is used.
 %(custom command code)s
 
-; Custom command code is included when the -M option is used.
+; Custom initialisation code is included when the -I option is used.
 %(custom init code)s
 
 data:
