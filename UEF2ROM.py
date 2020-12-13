@@ -1183,15 +1183,9 @@ if __name__ == "__main__":
             details[0]["service boot code"] = _open("asm/service_boot.oph").read()
             bootable = True
         else:
-            if minimal and bootable and not custom_star_command:
-                sys.stderr.write(
-                    "Bootable minimal ROMs must either be auto-bootable or implement a custom\n"
-                    "star command.\n"
-                    )
-                sys.exit(1)
-            else:
-                # Not auto-bootable or minimal, so include code to allow
-                # the ROM to be initialised.
+            if bootable or custom_star_command:
+                # Not auto-bootable but still bootable, so include code to
+                # allow the ROM to be initialised.
                 details[0]["service entry command code"] = _open("asm/service_entry_command.oph").read()
                 details[0]["service command code"] = _open("asm/service_command.oph").read() % {
                     "run service command": "jmp rom_command"}
@@ -1241,7 +1235,7 @@ if __name__ == "__main__":
                     }
                 details[r]["paging routine"] = _open("asm/paging_routine.oph").read()
         
-        if not minimal or custom_star_command or custom_init_command:
+        if not minimal or custom_star_command or custom_init_command or bootable:
             # Even though a minimal ROM without a custom star command doesn't
             # need a name, we apparently need one if we want autobooting to
             # work.
