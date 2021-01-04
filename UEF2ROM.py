@@ -563,7 +563,8 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
         os.remove(temp_boot_file)
         
         if boot_code:
-            uef_files.insert(0, [write_block(u, "!BOOT", 0x1900, 0x1900, boot_code, 0, 0x80, 0)])
+            boot_name = details[0]["boot name"]
+            uef_files.insert(0, [write_block(u, boot_name, 0x1900, 0x1900, boot_code, 0, 0x80, 0)])
             
             # If we inserted a !BOOT file, increment all the indices by 1 and
             # insert the !BOOT file at the start.
@@ -989,6 +990,7 @@ if __name__ == "__main__":
          "service entry command code": "",
          "service command code": "",
          "service boot code": "",
+         "boot name": "!BOOT",
          "boot code": "",
          "init romfs code": "",
          "first rom bank init code": "",
@@ -1020,6 +1022,7 @@ if __name__ == "__main__":
          "service entry command code": "",
          "service command code": "",
          "service boot code": "",
+         "boot name": "!BOOT",
          "boot code": "",
          "init romfs code": "",
          "second rom bank check code": "",
@@ -1065,6 +1068,9 @@ if __name__ == "__main__":
     patch_files, patch_file_name = find_option(args, "-pf", 1, "")
     joystick_enabled, joystick_info = find_option(args, "-j", 1, "")
     plus1_disable = find_option(args, "-p1", 0)
+    custom_rom_name, rom_name = find_option(args, "-rn", 1, "MGC")
+    custom_rom_title, rom_title = find_option(args, "-rt", 1, "MGC")
+    custom_boot_name, boot_name = find_option(args, "-bf", 1, "!BOOT")
     
     if minimal and (tape_override or fscheck_override or use_workspace):
         sys.stderr.write("Cannot override *TAPE or use extra workspace in "
@@ -1191,7 +1197,13 @@ if __name__ == "__main__":
                     "run service command": "jmp rom_command"}
         
         if bootable:
-            details[0]["boot code"] = _open("asm/boot_code.oph").read()
+            # Record the boot file name for later file creation.
+            details[0]["boot name"] = boot_name
+            if not custom_boot_name:
+                # Just load the first file and ignore the default name.
+                boot_name = ""
+            
+            details[0]["boot code"] = _open("asm/boot_code.oph").read() % {"boot name": boot_name}
             if minimal:
                 # Minimal ROMs only need to call *ROM when booting.
                 details[0]["init romfs code"] = _open("asm/init_romfs.oph").read()
@@ -1235,11 +1247,14 @@ if __name__ == "__main__":
                     }
                 details[r]["paging routine"] = _open("asm/paging_routine.oph").read()
         
-        if not minimal or custom_star_command or custom_init_command or bootable:
+        if not minimal or custom_star_command or custom_init_command or bootable or custom_rom_name:
             # Even though a minimal ROM without a custom star command doesn't
             # need a name, we apparently need one if we want autobooting to
             # work.
-            details[0]["rom name"] = '.byte "MGC", 13'
+            details[0]["rom name"] = '.byte "%s", 13' % rom_name
+        
+        if custom_rom_title:
+            details[0]["title"] = '.byte "%s", 13' % rom_title
         
         if minimal:
             if custom_star_command:

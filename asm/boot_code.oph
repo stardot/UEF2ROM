@@ -4,4 +4,4 @@ ldx #<boot_command
 ldy #>boot_command
 jmp $fff7
 
-boot_command: .byte "*/", 13
+boot_command: .byte "*/%(boot name)s", 13
