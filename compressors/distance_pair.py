@@ -188,7 +188,7 @@ def find_least_used(data):
         special = freq.index(0)
     except ValueError:
         # Find the least used byte value.
-        pairs = map(lambda i: (freq[i], i), range(len(freq)))
+        pairs = list(map(lambda i: (freq[i], i), range(len(freq))))
         pairs.sort()
         special = pairs.pop(0)[1]
     
