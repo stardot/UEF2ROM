@@ -1,9 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 UEFfile.py - Handle UEF archives.
 
-Copyright (c) 2001-2015, David Boddie <david@boddie.org.uk>
+Copyright (c) 2001-2013, David Boddie <david@boddie.org.uk>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -19,9 +19,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import exceptions, sys, string, os, gzip, types
+import sys, string, os, gzip, types
 
-class UEFfile_error(exceptions.Exception):
+class UEFfile_error(Exception):
 
     pass
 
@@ -59,15 +59,15 @@ class UEFfile:
             self.files = []
 
             # Emulator associated with this UEF file
-            self.emulator = 'Unspecified'
+            self.emulator = b'Unspecified'
             # Originator/creator of the UEF file
-            self.creator = creator
+            self.creator = bytes(creator, "ascii")
             # Target machine
-            self.target_machine = ''
+            self.target_machine = b''
             # Keyboard layout
-            self.keyboard_layout = ''
+            self.keyboard_layout = b''
             # Features
-            self.features = ''
+            self.features = b''
 
             # UEF file format version
             self.minor = 9
@@ -82,25 +82,25 @@ class UEFfile:
             try:
                 in_f = open(filename, 'rb')
             except IOError:
-                raise UEFfile_error, 'The input file, '+filename+' could not be found.'
+                raise UEFfile_error('The input file, '+filename+' could not be found.')
 
             # Is it gzipped?
-            if in_f.read(10) != 'UEF File!\000':
+            if in_f.read(10) != b'UEF File!\000':
             
                 in_f.close()
                 in_f = gzip.open(filename, 'rb')
             
                 try:
-                    if in_f.read(10) != 'UEF File!\000':
+                    if in_f.read(10) != b'UEF File!\000':
                         in_f.close()
-                        raise UEFfile_error, 'The input file, '+filename+' is not a UEF file.'
+                        raise UEFfile_error('The input file, '+filename+' is not a UEF file.')
                 except:
                     in_f.close()
-                    raise UEFfile_error, 'The input file, '+filename+' could not be read.'
+                    raise UEFfile_error('The input file, '+filename+' could not be read.')
             
             # Read version self.number of the file format
-            self.minor = self.str2num(1, in_f.read(1))
-            self.major = self.str2num(1, in_f.read(1))
+            self.minor = ord(in_f.read(1))
+            self.major = ord(in_f.read(1))
 
             # Decode the UEF file
             
@@ -123,7 +123,7 @@ class UEFfile:
                 if length != 0:
                     self.chunks.append((chunk_id, in_f.read(length)))
                 else:
-                    self.chunks.append((chunk_id, ''))
+                    self.chunks.append((chunk_id, b''))
 
             # Close the input file
             in_f.close()
@@ -151,7 +151,7 @@ class UEFfile:
         try:
             uef = gzip.open(filename, 'wb')
         except IOError:
-            raise UEFfile_error, "Couldn't open %s for writing." % filename
+            raise UEFfile_error("Couldn't open %s for writing." % filename)
     
         # Write the UEF file header
         self.write_uef_header(uef)
@@ -180,11 +180,11 @@ class UEFfile:
 
         # Little endian writing
 
-        s = ""
+        s = b""
 
         while size > 0:
             i = n % 256
-            s = s + chr(i)
+            s = s + bytes([i])
             n = n >> 8
             size = size - 1
 
@@ -198,7 +198,7 @@ class UEFfile:
         n = 0
         while i < size:
 
-            n = n | (ord(s[i]) << (i*8))
+            n = n | (s[i] << (i*8))
             i = i + 1
 
         return n
@@ -211,7 +211,7 @@ class UEFfile:
 
         for i in range(0,len(s)):
 
-            a = ord(s[len(s)-i-1])
+            a = s[len(s)-i-1]
             if (a >= 48) & (a <= 57):
                 n = n | ((a-48) << (i*4))
             elif (a >= 65) & (a <= 70):
@@ -248,7 +248,7 @@ class UEFfile:
 
         for i in s:
 
-            high = high ^ ord(i)
+            high = high ^ i
 
             for j in range(0,8):
 
@@ -409,9 +409,9 @@ class UEFfile:
                     block[write_ptr] = data[bit_ptr >> 3]
                 else:
                     # Read the byte containing the first bits
-                    b1 = ord(data[bit_ptr >> 3])
+                    b1 = data[bit_ptr >> 3]
                     # Read the byte containing the rest
-                    b2 = ord(data[(bit_ptr >> 3) + 1])
+                    b2 = data[(bit_ptr >> 3) + 1]
 
                     # Construct a byte of data
                     # Shift the first byte right by the bit offset
@@ -425,7 +425,7 @@ class UEFfile:
 
                     # OR the two bytes together and write it to
                     # the block
-                    block[write_ptr] = chr(b1 | b2)
+                    block[write_ptr] = b1 | b2
 
                 # Increment the block pointer
                 write_ptr = write_ptr + 1
@@ -435,20 +435,20 @@ class UEFfile:
                 bit_ptr = bit_ptr + 9
 
         # Read the block
-        name = ''
+        name = b''
         a = 1
         while 1:
             c = block[a]
-            if ord(c) != 0:     # was > 32:
-                name = name + c
+            if c != 0:     # was > 32:
+                name = name + bytes([c])
             a = a + 1
-            if ord(c) == 0:
+            if c == 0:
                 break
 
         load = self.str2num(4, block[a:a+4])
         exec_addr = self.str2num(4, block[a+4:a+8])
         block_number = self.str2num(2, block[a+8:a+10])
-        last = self.str2num(1, block[a+12])
+        last = block[a+12]
 
         if last & 0x80 != 0:
             last = 1
@@ -458,12 +458,13 @@ class UEFfile:
         return (name, load, exec_addr, block[a+19:-2], block_number, last)
 
 
-    def write_block(self, block, name, load, exe, n):
+    def write_block(self, block, name, load, exe, n, last = 0, flags = 0):
+    
         """Write data to a string as a file data block in preparation to be written
         as chunk data to a UEF file."""
 
         # Write the alignment character
-        out = "*"+name[:10]+"\000"
+        out = b"*"+name[:10]+b"\000"
 
         # Load address
         out = out + self.number(4, load)
@@ -478,18 +479,15 @@ class UEFfile:
         out = out + self.number(2, len(block))
 
         # Block flag (last block)
-        if len(block) == 256:
-            out = out + self.number(1, 0)
-            last = 0
+        if flags:
+            out = out + self.number(1, flags)
+        elif last:
+            out = out + self.number(1, 128)
         else:
-            out = out + self.number(1, 128) # shouldn't be needed 
-            last = 1 
+            out = out + self.number(1, 0)
 
         # Next address
-        out = out + self.number(2, 0)
-
-        # Unknown
-        out = out + self.number(2, 0)
+        out = out + self.number(4, 0)
 
         # Header CRC
         out = out + self.number(2, self.crc(out[1:]))
@@ -499,7 +497,7 @@ class UEFfile:
         # Block CRC
         out = out + self.number(2, self.crc(block))
 
-        return out, last
+        return out
 
 
     def get_leafname(self, path):
@@ -597,7 +595,7 @@ class UEFfile:
 
             self.creator = 'Unknown'
 
-        elif chunk[1] == '':
+        elif chunk[1] == b'':
 
             self.creator = 'Unknown'
         else:
@@ -619,8 +617,8 @@ class UEFfile:
             machines = ('BBC Model A', 'Electron', 'BBC Model B', 'BBC Master')
             keyboards = ('Any layout', 'Physical layout', 'Remapped')
 
-            machine = ord(chunk[1][0]) & 0x0f
-            keyboard = (ord(chunk[1][0]) & 0xf0) >> 4
+            machine = chunk[1][0] & 0x0f
+            keyboard = (chunk[1][0] & 0xf0) >> 4
 
             if machine < len(machines):
                 self.target_machine = machines[machine]
@@ -640,11 +638,11 @@ class UEFfile:
 
         if pos == None:
 
-            self.emulator = 'Unspecified'
+            self.emulator = b'Unspecified'
 
-        elif chunk[1] == '':
+        elif chunk[1] == b'':
 
-            self.emulator = 'Unknown'
+            self.emulator = b'Unknown'
         else:
             self.emulator = chunk[1]
 
@@ -653,28 +651,28 @@ class UEFfile:
             del self.chunks[pos]
 
         # Remove trailing null bytes
-        while len(self.creator) > 0 and self.creator[-1] == '\000':
+        while len(self.creator) > 0 and self.creator[-1] == b'\000':
 
             self.creator = self.creator[:-1]
 
-        while len(self.emulator) > 0 and self.emulator[-1] == '\000':
+        while len(self.emulator) > 0 and self.emulator[-1] == b'\000':
 
             self.emulator = self.emulator[:-1]
 
-        self.features = ''
+        self.features = b''
         if self.find_next_chunk(0, [0x1])[0] != None:
-            self.features = self.features + '\n' + 'Instructions'
+            self.features = self.features + b'\n' + b'Instructions'
         if self.find_next_chunk(0, [0x2])[0] != None:
-            self.features = self.features + '\n' + 'Credits'
+            self.features = self.features + b'\n' + b'Credits'
         if self.find_next_chunk(0, [0x3])[0] != None:
-            self.features = self.features + '\n' + 'Inlay'
+            self.features = self.features + b'\n' + b'Inlay'
 
 
     def write_uef_header(self, file):
         """Write the UEF file header and version number to a file."""
 
         # Write the UEF file header
-        file.write('UEF File!\000')
+        file.write(b'UEF File!\000')
 
         # Minor and major version numbers
         file.write(self.number(1, self.minor) + self.number(1, self.major))
@@ -683,10 +681,10 @@ class UEFfile:
     def write_uef_creator(self, file):
         """Write a creator chunk to a file."""
 
-        origin = self.creator + '\000'
+        origin = self.creator + b'\000'
 
         if (len(origin) % 4) != 0:
-            origin = origin + ('\000'*(4-(len(origin) % 4)))
+            origin = origin + (b'\000'*(4-(len(origin) % 4)))
 
         # Write the creator chunk
         self.chunk(file, 0, origin)
@@ -698,13 +696,13 @@ class UEFfile:
         machines = {'BBC Model A': 0, 'Electron': 1, 'BBC Model B': 2, 'BBC Master':3}
         keyboards = {'any': 0, 'physical': 1, 'logical': 2}
 
-        if machines.has_key(self.target_machine):
+        if self.target_machine in machines:
 
             machine = machines[self.target_machine]
         else:
             machine = 0
 
-        if keyboards.has_key(self.keyboard_layout):
+        if self.keyboard_layout in keyboards:
 
             keyboard = keyboards[keyboard_layout]
         else:
@@ -716,10 +714,10 @@ class UEFfile:
     def write_emulator_info(self, file):
         """Write an emulator chunk to a file."""
 
-        emulator = self.emulator + '\000'
+        emulator = self.emulator + b'\000'
 
         if (len(emulator) % 4) != 0:
-            emulator = emulator + ('\000'*(4-(len(emulator) % 4)))
+            emulator = emulator + (b'\000'*(4-(len(emulator) % 4)))
 
         # Write the creator chunk
         self.chunk(file, 0xff00, emulator)
@@ -734,8 +732,8 @@ class UEFfile:
 
 
     def create_chunks(self, name, load, exe, data):
-        """Creates and returns suitable chunks for a file with the given name,
-        load address, executable address and data."""
+        """Create suitable chunks, and insert them into
+        the list of chunks."""
 
         # Reset the block number to zero
         block_number = 0
@@ -746,8 +744,11 @@ class UEFfile:
         new_chunks = []
     
         # Write block details
-        while 1:
-            block, last = self.write_block(data[:256], name, load, exe, block_number)
+        while True:
+        
+            last = (len(data) <= 256)
+            block = self.write_block(data[:256], name, load, exe, block_number,
+                                     last)
 
             # Remove the leading 256 bytes as they have been encoded
             data = data[256:]
@@ -761,7 +762,7 @@ class UEFfile:
             # Write the block to the list of new chunks
             new_chunks.append((0x100, block))
 
-            if last == 1:
+            if last:
                 break
 
             # Increment the block number
@@ -792,7 +793,7 @@ class UEFfile:
 
         if file_position < 0:
 
-            raise UEFfile_error, 'Position must be zero or greater.'
+            raise UEFfile_error('Position must be zero or greater.')
 
         # Find the chunk position which corresponds to the file_position
         if self.contents != []:
@@ -817,7 +818,7 @@ class UEFfile:
         if len(info) == 0:
             return
 
-        if type(info[0]) == types.StringType:
+        if type(info[0]) == bytes:
 
             # Assume that the info sequence contains name, load, exe, data
             info = [info]
@@ -829,9 +830,9 @@ class UEFfile:
         for name, load, exe, data in info:
 
             if gap:
-                inserted_chunks += [(0x112, "\xdc\x05"),
-                                    (0x110, "\xdc\x05"),
-                                    (0x100, "\xdc")]
+                inserted_chunks += [(0x112, b'\xdc\x05'),
+                                    (0x110, b'\xdc\x05'),
+                                    (0x100, b'\xdc')]
             
             inserted_chunks += self.create_chunks(name, load, exe, data)
 
@@ -865,7 +866,7 @@ class UEFfile:
             return encode_as[string.lower(name)]
 
         except KeyError:
-            raise UEFfile_error, "Couldn't find suitable chunk number for %s" % name
+            raise UEFfile_error("Couldn't find suitable chunk number for %s" % name)
 
 
     def export_files(self, file_positions):
@@ -879,7 +880,7 @@ class UEFfile:
         If positions is a list then return a list of info tuples.
         """
 
-        if type(file_positions) == types.IntType:
+        if type(file_positions) == int:
 
             file_positions = [file_positions]
 
@@ -890,7 +891,7 @@ class UEFfile:
             # Find the chunk position which corresponds to the file position
             if file_position < 0 or file_position >= len(self.contents):
 
-                raise UEFfile_error, 'File position %i does not correspond to an actual file.' % file_position
+                raise UEFfile_error('File position %i does not correspond to an actual file.' % file_position)
             else:
                 # Find the start and end positions
                 name = self.contents[file_position]['name']
@@ -921,7 +922,7 @@ class UEFfile:
         try:
             return decode_as[number]
         except KeyError:
-            raise UEFfile_error, "Couldn't find name for chunk number %i." % number
+            raise UEFfile_error("Couldn't find name for chunk number %i." % number)
 
 
     def remove_files(self, file_positions):
@@ -930,7 +931,7 @@ class UEFfile:
         positions is either an integer or a list of integers.
         """
         
-        if type(file_positions) == types.IntType:
+        if type(file_positions) == int:
 
             file_positions = [file_positions]
 
@@ -940,12 +941,12 @@ class UEFfile:
             # Find the chunk position which corresponds to the file position
             if file_position < 0 or file_position >= len(self.contents):
         
-                print 'File position %i does not correspond to an actual file.' % file_position
+                print('File position %i does not correspond to an actual file.' % file_position)
     
             else:
                 # Add the chunk positions within each file to the list of positions
-                positions = positions + range(self.contents[file_position]['position'],
-                                  self.contents[file_position]['last position'] + 1)
+                positions = positions + list(range(self.contents[file_position]['position'],
+                                  self.contents[file_position]['last position'] + 1))
     
         # Create a new list of chunks without those in the positions list
         new_chunks = []
@@ -966,10 +967,10 @@ class UEFfile:
         new = ''
         for i in s:
 
-            if ord(i) < 32:
+            if i < 32:
                 new = new + '?'
             else:
-                new = new + i
+                new = new + chr(i)
 
         return new
 
@@ -985,25 +986,25 @@ class UEFfile:
         # Info command
     
         # Split paragraphs
-        creator = string.split(self.creator, '\012')
+        creator = self.creator.split(b'\012')
     
-        print 'File creator:'
+        print('File creator:')
         for line in creator:
-            print line
-        print
-        print 'File format version: %i.%i' % (self.major, self.minor)
-        print
-        print 'Target machine : '+self.target_machine
-        print 'Keyboard layout: '+self.keyboard_layout
-        print 'Emulator       : '+self.emulator
-        print
-        if self.features != '':
+            print(line)
+        print()
+        print('File format version: %i.%i' % (self.major, self.minor))
+        print()
+        print('Target machine : '+self.target_machine)
+        print('Keyboard layout: '+self.keyboard_layout)
+        print('Emulator       : '+self.emulator)
+        print()
+        if self.features != b'':
 
-            print 'Contains:'
-            print self.features
-            print
-        print '(%i chunks)' % len(self.chunks)
-        print
+            print('Contains:')
+            print(self.features)
+            print()
+        print('(%i chunks)' % len(self.chunks))
+        print()
 
     def cat(self):
         """
@@ -1014,11 +1015,11 @@ class UEFfile:
     
         if self.contents == []:
     
-            print 'No files'
+            print('No files')
     
         else:
     
-            print 'Contents:'
+            print('Contents:')
     
             file_number = 0
     
@@ -1028,14 +1029,9 @@ class UEFfile:
                 # to ? symbols
                 new_name = self.printable(file['name'])
     
-                print string.expandtabs(string.ljust(str(file_number), 3)+': '+
-                            string.ljust(new_name, 16)+
-                            string.upper(
-                                string.ljust(hex(file['load'])[2:], 10) +'\t'+
-                                string.ljust(hex(file['exec'])[2:], 10) +'\t'+
-                                string.ljust(hex(len(file['data']))[2:], 6)
-                            ) +'\t'+
-                            'chunks %i to %i' % (file['position'], file['last position']) )
+                print("{0:<3}: {1:<16}{2:<10X}{3:<10X}{4:<6X} chunks {5} to {6}".format(
+                    file_number, new_name, file['load'], file['exec'],
+                    len(file['data']), file['position'], file['last position']))
     
                 file_number = file_number + 1
 
@@ -1105,20 +1101,20 @@ class UEFfile:
                         }
 
         if len(self.chunks) == 0:
-            print 'No chunks'
+            print('No chunks')
             return
 
         # Display chunks
-        print 'Chunks:'
+        print('Chunks:')
 
         n = 0
 
         for c in self.chunks:
 
             if n % 16 == 0:
-                sys.stdout.write(string.rjust('%i: '% n, 8))
+                sys.stdout.write('{0:>8}: '.format(n))
             
-            if chunks_symbols.has_key(c[0]):
+            if c[0] in chunks_symbols:
                 sys.stdout.write(chunks_symbols[c[0]])
             else:
                 # Unknown
@@ -1129,4 +1125,4 @@ class UEFfile:
 
             n = n + 1
 
-        print
+        print()

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 Copyright (C) 2018 David Boddie <david@boddie.org.uk>
@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import sys
-import UEFfile
+from . import UEFfile
 
 def get_updated_info(line):
 
@@ -70,7 +70,7 @@ def get_patched_data(line):
 
 def patch_files(u, patch_file):
 
-    print "Applying patch file", patch_file
+    print("Applying patch file", patch_file)
     
     f = open(patch_file)
     n = 0
@@ -113,8 +113,8 @@ def patch_files(u, patch_file):
             # Patch the file data with the new data.
             file_data = file_data[:offset] + bytes + file_data[offset + span_length:]
             
-            print "%i (%s): Replacing %i bytes at 0x%x with %i bytes." % (position,
-                repr(info["name"]), span_length, offset, len(bytes))
+            print("%i (%s): Replacing %i bytes at 0x%x with %i bytes." % (position,
+                repr(info["name"]), span_length, offset, len(bytes)))
         
         # Create UEF chunks for the modified file.
         chunks = u.create_chunks(info["name"], info["load"], info["exec"], file_data)

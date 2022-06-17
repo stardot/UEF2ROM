@@ -16,11 +16,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 __author__ = "David Boddie <david@boddie.org.uk>"
-__date__ = "2014-04-22"
-__version__ = "0.1"
+__date__ = "2020-03-29"
+__version__ = "0.4"
 __license__ = "GNU General Public License (version 3 or later)"
 
-import StringIO
+from io import StringIO
 from diskutils import Directory, DiskError, File, Utilities
 
 class Catalogue(Utilities):
@@ -36,7 +36,7 @@ class Catalogue(Utilities):
         # catalogue.
         self.free_space = [(2, 798)]
         self.sectors = 800
-        self.tracks = self.sectors / 10
+        self.tracks = self.sectors // 10
         self.disk_cycle = 0
         self.boot_option = 0
     
@@ -77,7 +77,7 @@ class Catalogue(Utilities):
             
             name = name.strip()
             extra = self._read_unsigned_byte(self._read(offset + p + 7))
-            prefix = chr(extra & 0x7f)
+            prefix = bytes([extra & 0x7f])
             locked = (extra & 0x80) != 0
             
             load = self._read_unsigned_half_word(self._read(offset + 0x100 + p, 2))
@@ -111,7 +111,7 @@ class Catalogue(Utilities):
                     data += self._read(addr, min(self.sector_size, length - len(data)))
                     sector += 1
             
-            files.append(File(prefix + "." + name, data, load, exec_, length, locked,
+            files.append(File(prefix + b"." + name, data, load, exec_, length, locked,
                               disk_address))
             
             p += 8
@@ -121,7 +121,7 @@ class Catalogue(Utilities):
     def write(self, disk_title, files):
     
         if len(files) > 31:
-            raise DiskError, "Too many entries to write."
+            raise DiskError("Too many entries to write.")
         
         disk_name = self._pad(self._safe(disk_title), 12, " ")
         self._write(0, disk_title[:8])
@@ -137,7 +137,11 @@ class Catalogue(Utilities):
         self._write(0x106, self._write_unsigned_byte(extra))
         self._write(0x107, self._write_unsigned_byte(self.sectors & 0xff))
         
-        p = 8
+        # The catalogue contains files in descending disk address order, so
+        # allocate files starting at the end of the catalogue and work
+        # forwards. Note that the first file is at offset 8.
+        p = 8 * len(files)
+        
         for file in files:
         
             prefix, name = file.name.split(".")
@@ -170,7 +174,7 @@ class Catalogue(Utilities):
             self._write(0x100 + p + 6, self._write_unsigned_byte(extra))
             self._write(0x100 + p + 7, self._write_unsigned_byte(file_start_sector & 0xff))
             
-            p += 8
+            p -= 8
     
     def _find_space(self, file):
     
@@ -193,7 +197,7 @@ class Catalogue(Utilities):
                 
                 return sector * self.sector_size
         
-        raise DiskError, "Failed to find space for file: %s" % file.name
+        raise DiskError("Failed to find space for file: %s" % file.name)
     
     def _disk_address(self, sector):
     

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # Copyright (C) 2016 David Boddie <david@boddie.org.uk>
 #
@@ -367,7 +367,7 @@ def hexdump(data):
     while i < len(data):
     
         d = data[i:i+16]
-        print " ".join(map(lambda x: "%02x" % x, d))
+        print(" ".join(map(lambda x: "%02x" % x, d)))
         i += 16
 
 
@@ -414,14 +414,14 @@ if __name__ == "__main__":
     
     if command == "--compress":
     
-        print "Using %i bits for offsets." % offset_bits
-        print "Input size:", len(data)
+        print("Using %i bits for offsets." % offset_bits)
+        print("Input size:", len(data))
         if do_merge:
             original_data = data
             data = merge(data)
         
         c = compress_file(data, offset_bits = offset_bits, window = mode)
-        print "Compressed:", len(c)
+        print("Compressed:", len(c))
         try:
             out_f.write("".join(map(chr, c)))
         except ValueError:
@@ -438,28 +438,28 @@ if __name__ == "__main__":
             while i < len(data) and i < len(d) and data[i] == d[i]:
                 i += 1
             
-            print "Data at %i compressed incorrectly." % i
+            print("Data at %i compressed incorrectly." % i)
             hexdump(data[:i])
-            print
+            print()
             c, d = decompress(c, mode, stop_at = i)
             hexdump(c[:i + 3])
     
     elif command == "--decompress":
     
-        print "Input size:", len(data)
+        print("Input size:", len(data))
         d = decompress(data, offset_bits = offset_bits, window = mode)
         if do_merge:
             d = unmerge(d)
-        print "Decompressed:", len(d)
+        print("Decompressed:", len(d))
         out_f.write("".join(map(chr, d)))
     
     elif command == "--test-blocks":
     
-        print "Input size:", len(data)
+        print("Input size:", len(data))
         
         pieces = compress_blocks(data, block_size, window = mode)
-        print "Compressed:", sum(map(lambda piece: len(piece[1]), pieces))
-        print "(%i pieces)" % len(pieces)
+        print("Compressed:", sum(map(lambda piece: len(piece[1]), pieces)))
+        print("(%i pieces)" % len(pieces))
         
         d = decompress_blocks(pieces, window = mode)
         out_f.write("".join(map(chr, d)))
@@ -469,7 +469,7 @@ if __name__ == "__main__":
             while i < len(data) and i < len(d) and data[i] == d[i]:
                 i += 1
             
-            print "Data at %i compressed incorrectly." % i
+            print("Data at %i compressed incorrectly." % i)
     
     else:
         sys.stderr.write("Unknown command '%s'.\n" % command)

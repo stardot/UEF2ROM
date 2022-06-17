@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import struct, time
 
 # Find the number of centiseconds between 1900 and 1970.
-between_epochs = ((365 * 70) + 17) * 24 * 360000L
+between_epochs = ((365 * 70) + 17) * 24 * 360000
 
 class DiskError(Exception):
     pass
@@ -80,7 +80,7 @@ class Utilities:
         n = 0
         while i < len(s):
         
-            n = n | (ord(s[i]) << (i*8))
+            n = n | (s[i] << (i*8))
             i = i + 1
         
         return n
@@ -125,11 +125,11 @@ class Utilities:
         
         for c in s:
         
-            if ord(c) >= 128:
-                i = ord(c) ^ 128
+            if c >= 128:
+                i = c ^ 128
                 c = chr(i)
             
-            if ord(c) <= lower:
+            if c <= lower:
                 break
             
             new = new + c
@@ -218,4 +218,5 @@ class File:
             return time.localtime(centiseconds / 100.0)
         except ValueError:
             return ()
+
 

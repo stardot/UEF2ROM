@@ -1,7 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
-Copyright (C) 2015 David Boddie <david@boddie.org.uk>
+Copyright (C) 2022 David Boddie <david@boddie.org.uk>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import commands, os, stat, struct, sys, tempfile
+import os, shlex, stat, struct, sys, tempfile
 from tools import format_data, joystick, patcher, UEFfile
 from compressors import distance_pair
 
@@ -119,6 +119,10 @@ def _open(file_name):
 
     return open(os.path.join(res_dir, file_name))
 
+def _write(file_name, data):
+
+    os.write(file_name, data.encode("latin1"))
+
 def plural_str(n, singular, plural):
     if n == 1:
         return singular
@@ -160,7 +164,7 @@ def format_data(data):
     s = ""
     i = 0
     while i < len(data):
-        s += ".byte " + ",".join(map(lambda c: "$%02x" % ord(c), data[i:i+16])) + "\n"
+        s += ".byte " + ",".join(map(lambda c: "$%02x" % c, data[i:i+16])) + "\n"
         i += 16
     
     return s
@@ -172,16 +176,16 @@ def read_block(block):
     a = 1
     while 1:
         c = block[a]
-        if ord(c) != 0:     # was > 32:
-            name = name + c
+        if c != 0:     # was > 32:
+            name = name + chr(c)
         a = a + 1
-        if ord(c) == 0:
+        if c == 0:
             break
 
     load = struct.unpack("<I", block[a:a+4])[0]
     exec_addr = struct.unpack("<I", block[a+4:a+8])[0]
     block_number = struct.unpack("<H", block[a+8:a+10])[0]
-    flags = struct.unpack("<B", block[a+12])[0]
+    flags = block[a+12]
     
     data = block[a+19:-2]
     if len(data) > 256:
@@ -192,7 +196,7 @@ def read_block(block):
 def write_block(u, name, load, exec_, data, n, flags, address):
 
     # Write the alignment character
-    out = "*"+name[:10]+"\000"
+    out = b"*"+name[:10].encode("latin1")+b"\000"
     
     # Load address
     out = out + struct.pack("<I", load)
@@ -298,11 +302,11 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
         exec_ = execution_addr
     
     # Concatenate the raw data from all the chunks in the file.
-    raw_data = ""
+    raw_data = b""
     for chunk in uef_files[index]:
         raw_data += read_block(chunk)[3]
     
-    encoded_raw_data = map(ord, raw_data)
+    encoded_raw_data = raw_data
     
     this = 0
     compressed_pieces = []
@@ -316,7 +320,7 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
         decoded_raw_data, new_compressed_pieces = compress_file_or_blocks(
             encoded_raw_data, compress_offset_bits, compress_block_size)
         
-        if decoded_raw_data != encoded_raw_data:
+        if bytes(decoded_raw_data) != encoded_raw_data:
             sys.stderr.write("Error when compressing file %s. "
                 "Decompressed data did not match the original data.\n" % name)
             sys.exit(1)
@@ -326,9 +330,9 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
         # data needed to be compressed again.
         compressed_pieces = new_compressed_pieces + compressed_pieces
         
-        print "Attempted to compress %s from %i bytes to %i %s of compressed data:" % (
+        print("Attempted to compress %s from %i bytes to %i %s of compressed data:" % (
             repr(name)[1:-1], len(encoded_raw_data), len(compressed_pieces),
-            plural_str(len(compressed_pieces), "piece", "pieces"))
+            plural_str(len(compressed_pieces), "piece", "pieces")))
         
         first_block = True
         
@@ -340,19 +344,19 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
             clength = len(encoded_compressed_data)
             
             if compress_offset_bits != 0:
-                print " %02x: %i bytes with %i-bit offset at load address $%x." % (
-                    this, clength, compress_offset_bits, load)
+                print(" %02x: %i bytes with %i-bit offset at load address $%x." % (
+                    this, clength, compress_offset_bits, load))
             else:
-                print " %02x: %i bytes of uncompressed data at load address $%x." % (
-                    this, clength, load)
+                print(" %02x: %i bytes of uncompressed data at load address $%x." % (
+                    this, clength, load))
             
             # Create a block with only a header and no data.
             if first_block or not compressed_pieces:
-                info = (name, load, exec_, "", this, 0x0)
-                header = write_block(u, name, load, exec_, "", this, 0x0, 0)
+                info = (name, load, exec_, b"", this, 0x0)
+                header = write_block(u, name, load, exec_, b"", this, 0x0, 0)
             else:
-                info = (name, load, exec_, "", this, 0)
-                header = "\x23"
+                info = (name, load, exec_, b"", this, 0)
+                header = 0x23
             
             # Calculate the space between the end of the ROM and the
             # current address, leaving room for an end of ROM marker.
@@ -362,8 +366,8 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
             
                 # The file won't fit into the current ROM. Either put it in a
                 # new one, or split it and put the rest of the file there.
-                print "File %s won't fit in the current ROM - %i bytes too long." % (
-                    repr(name), len(header) + compressed_entry_size + clength - remaining)
+                print("File %s won't fit in the current ROM - %i bytes too long." % (
+                    repr(name), len(header) + compressed_entry_size + clength - remaining))
                 
                 # Try to fit the block header, compressed entry and
                 # part of the compressed file in the remaining space.
@@ -405,14 +409,14 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
                     
                     compressed_pieces = []
                     
-                    print "Writing %i bytes, leaving %i to be written." % (
-                        len(raw_data_written), len(encoded_raw_data))
+                    print("Writing %i bytes, leaving %i to be written." % (
+                        len(raw_data_written), len(encoded_raw_data)))
                     
-                    cdata = "".join(map(chr, encoded_compressed_data))
+                    cdata = b"".join(map(chr, encoded_compressed_data))
                     
                     compressed_block = Compressed(cdata, info,
                         len(raw_data_written), compress_offset_bits,
-                        first_block, header == "\x23")
+                        first_block, header == 0x23)
                     
                     if first_block:
                         file_addresses.append(address)
@@ -454,11 +458,11 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
                 address = data_addresses[r]
                 
                 if split_files and has_free_space:
-                    print "Splitting %s - moving %i bytes to the next ROM." % (
-                        repr(name), len(encoded_raw_data))
+                    print("Splitting %s - moving %i bytes to the next ROM." % (
+                        repr(name), len(encoded_raw_data)))
                     break
                 else:
-                    print "Moving %s to the next ROM." % repr(name)
+                    print("Moving %s to the next ROM." % repr(name))
                     
                     # No raw data needs to be recompressed.
                     encoded_raw_data = []
@@ -474,13 +478,13 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
                 
                 # Update the header if this block is the last in the file.
                 if not compressed_pieces:
-                    info = (name, load, exec_, "", this, 0x80)
-                    header = write_block(u, name, load, exec_, "", this, 0x80, 0)
+                    info = (name, load, exec_, b"", this, 0x80)
+                    header = write_block(u, name, load, exec_, b"", this, 0x80, 0)
                 
-                cdata = "".join(map(chr, encoded_compressed_data))
+                cdata = encoded_compressed_data
                 
                 compressed_block = Compressed(cdata, info, len(enc_raw_data),
-                    compress_offset_bits, first_block, header == "\x23")
+                    compress_offset_bits, first_block, header == 0x23)
                 
                 if first_block:
                     file_addresses.append(address)
@@ -514,7 +518,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
     
     for n, chunk in u.chunks:
     
-        if (n == 0x100 or n == 0x102) and chunk and chunk[0] == "\x2a":
+        if (n == 0x100 or n == 0x102) and chunk and chunk[0] == 0x2a:
         
             name, load, exec_, block_data, this, flags = info = read_block(chunk)
             
@@ -553,9 +557,9 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
         tf, temp_boot_file = tempfile.mkstemp(suffix=os.extsep+'boot')
         
         boot_file_text = _open("asm/file_boot_code.oph").read() % details[0]
-        os.write(tof, boot_file_text)
+        _write(tof, boot_file_text)
         
-        if os.system("ophis -o " + commands.mkarg(temp_boot_file) + " " + commands.mkarg(temp_oph_file)) != 0:
+        if os.system("ophis -o " + shlex.quote(temp_boot_file) + " " + shlex.quote(temp_oph_file)) != 0:
             sys.exit(1)
         
         boot_code = open(temp_boot_file, "rb").read()
@@ -657,7 +661,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             else:
                 # The next block follows the continuation marker, raw block data
                 # and the block checksum.
-                block = "\x23" + block_data + struct.pack("<H", u.crc(block_data))
+                block = b"\x23" + block_data + struct.pack("<H", u.crc(block_data))
             
             if this == 0:
                 file_addresses.append(address)
@@ -666,7 +670,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             
                 # The block won't fit into the current ROM. Start a new one
                 # and add it there along with the other blocks in the file.
-                print "Block $%x in %s won't fit in the current ROM." % (this, repr(name))
+                print("Block $%x in %s won't fit in the current ROM." % (this, repr(name)))
                 
                 if split_files:
                     files.append(blocks)
@@ -692,12 +696,12 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                 file_addresses.append(address)
                 
                 if split_files:
-                    print "Splitting %s - moving block $%x to the next ROM." % (repr(name), this)
+                    print("Splitting %s - moving block $%x to the next ROM." % (repr(name), this))
                     # Ensure that the first block in the new ROM has a full
                     # header.
                     block = chunk
                 else:
-                    print "Moving %s to the next ROM." % repr(name)
+                    print("Moving %s to the next ROM." % repr(name))
                     for old_block_info in blocks:
                         address += len(old_block_info.data)
             
@@ -710,8 +714,8 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
         end = load + (this * 256) + len(block_data)
         if workspace != workspace_end and \
             (load <= workspace < end or load < workspace_end <= end):
-            print "Warning: file %s [$%x,$%x) may overwrite ROM workspace: [$%x,$%x)" % (
-                repr(name), load, end, workspace, workspace_end)
+            print("Warning: file %s [$%x,$%x) may overwrite ROM workspace: [$%x,$%x)" % (
+                repr(name), load, end, workspace, workspace_end))
     
     if blocks:
         files.append(blocks)
@@ -732,13 +736,13 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
     for header, rom_file, rom in zip(headers, rom_files, roms):
     
         tf, temp_file = tempfile.mkstemp(suffix=os.extsep+'oph')
-        os.write(tf, header)
+        _write(tf, header)
         
         files, file_addresses, triggers = rom
         
         # Discard the address of the first file.
         address = file_addresses.pop(0)
-        print rom_file
+        print(rom_file)
         
         first_block = True
         file_details = []
@@ -753,7 +757,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
             
                 name, load, exec_, block_data, this, flags = block_info.info
                 length += len(block_data)
-                last = (b == len(blocks) - 1) and block_info.data[0] != "\x23"
+                last = (b == len(blocks) - 1) and block_info.data[0] != 0x23
                 
                 # Potential flag modifications:
                 #
@@ -764,7 +768,7 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                 
                 if isinstance(block_info, Compressed):
                 
-                    os.write(tf, "; %s %x\n" % (repr(name)[1:-1], this))
+                    _write(tf, "; %s %x\n" % (repr(name)[1:-1], this))
                     
                     if block_info.first_block:
                         next_address = file_addresses.pop(0)
@@ -773,19 +777,19 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                     length = 0
                     
                     if block_info.short_header:
-                        data = "\x23"
+                        data = b"\x23"
                     else:
                         data = write_block(u, name, load, exec_, block_data, this, flags, next_address)
                     
-                    os.write(tf, format_data(data))
+                    _write(tf, format_data(data))
                     
                     if block_info.first_block:
-                        print " %s starts at $%x and ends at $%x, next file at $%x" % (
+                        print(" %s starts at $%x and ends at $%x, next file at $%x" % (
                             repr(name), address, address + len(data),
-                            next_address)
+                            next_address))
                 
                 elif this == 0 or last or first_block:
-                    os.write(tf, "; %s %x\n" % (repr(name)[1:-1], this))
+                    _write(tf, "; %s %x\n" % (repr(name)[1:-1], this))
                     
                     if last:
                         next_address = file_addresses.pop(0)
@@ -793,31 +797,31 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                         length = 0
                         
                         if this == 0:
-                            print " %s starts at $%x and ends at $%x, next file at $%x" % (
+                            print(" %s starts at $%x and ends at $%x, next file at $%x" % (
                                 repr(name), address, address + len(block_info.data),
-                                next_address)
+                                next_address))
                     
                     elif this == 0:
                         file_name = name
                         load_addr = load
                         next_address = file_addresses[0]
-                        print " %s starts at $%x, next file at $%x" % (
-                            repr(name), address, next_address)
+                        print(" %s starts at $%x, next file at $%x" % (
+                            repr(name), address, next_address))
                     
                     else:
                         next_address = file_addresses[0]
-                        print " %s continues at $%x, next file at $%x" % (
-                            repr(name), address, next_address)
+                        print(" %s continues at $%x, next file at $%x" % (
+                            repr(name), address, next_address))
                     
                     first_block = False
                     
                     data = write_block(u, name, load, exec_, block_data, this, flags, next_address)
-                    os.write(tf, format_data(data))
+                    _write(tf, format_data(data))
                 
                 else:
-                    os.write(tf, "; %s %x\n" % (repr(name)[1:-1], this))
+                    _write(tf, "; %s %x\n" % (repr(name)[1:-1], this))
                     data = block_info.data
-                    os.write(tf, format_data(data))
+                    _write(tf, format_data(data))
                 
                 address += len(data)
         
@@ -829,8 +833,8 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
         
         if triggers:
         
-            os.write(tf, "\n; Compressed data\n")
-            os.write(tf, ".alias after_triggers %i\n" % (len(triggers) * 2))
+            _write(tf, "\n; Compressed data\n")
+            _write(tf, ".alias after_triggers %i\n" % (len(triggers) * 2))
             
             addresses = []
             for info in file_details:
@@ -847,52 +851,52 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
                     addresses.append(AddressInfo(name, addr, src_label, decomp_addr,
                         decomp_addr + block_info.raw_length, block_info.offset_bits))
                     
-                    os.write(tf, "\n; %s\n" % repr(name)[1:-1])
-                    os.write(tf, src_label + ":\n")
-                    os.write(tf, format_data(block_info.data))
+                    _write(tf, "\n; %s\n" % repr(name)[1:-1])
+                    _write(tf, src_label + ":\n")
+                    _write(tf, format_data(block_info.data))
             
-            #os.write(tf, "\n.alias debug %i" % (49 + roms.index(rom)))
-            os.write(tf, "\ntriggers:\n")
+            #_write(tf, "\n.alias debug %i" % (49 + roms.index(rom)))
+            _write(tf, "\ntriggers:\n")
             
             for address_info in addresses:
                 if address_info.decomp_addr != "x":
-                    os.write(tf, ".byte $%02x, $%02x ; %s\n" % (
+                    _write(tf, ".byte $%02x, $%02x ; %s\n" % (
                         address_info.addr & 0xff, address_info.addr >> 8,
                         repr(address_info.name)[1:-1]))
             
-            os.write(tf, "\nsrc_addresses:\n")
+            _write(tf, "\nsrc_addresses:\n")
             
             for address_info in addresses:
                 if address_info.decomp_addr != "x":
-                    os.write(tf, ".byte <%s, >%s\n" % (address_info.src_label,
+                    _write(tf, ".byte <%s, >%s\n" % (address_info.src_label,
                         address_info.src_label))
             
-            os.write(tf, "\ndest_addresses:\n")
+            _write(tf, "\ndest_addresses:\n")
             
             for address_info in addresses:
                 if address_info.decomp_addr != "x":
-                    os.write(tf, ".byte $%02x, $%02x\n" % (
+                    _write(tf, ".byte $%02x, $%02x\n" % (
                         address_info.decomp_addr & 0xff,
                         address_info.decomp_addr >> 8))
             
-            os.write(tf, "\ndest_end_addresses:\n")
+            _write(tf, "\ndest_end_addresses:\n")
             
             for address_info in addresses:
                 if address_info.decomp_addr != "x":
-                    os.write(tf, ".byte $%02x, $%02x\n" % (
+                    _write(tf, ".byte $%02x, $%02x\n" % (
                         address_info.decomp_end_addr & 0xff,
                         address_info.decomp_end_addr >> 8))
             
-            os.write(tf, "\noffset_bits_and_count_masks:\n")
+            _write(tf, "\noffset_bits_and_count_masks:\n")
             
             for address_info in addresses:
                 if address_info.decomp_addr != "x":
                     offset_mask = (1 << address_info.offset_bits) - 1
                     count_mask = 0xff ^ offset_mask
-                    os.write(tf, ".byte $%02x    ; count mask\n" % count_mask)
-                    os.write(tf, ".byte %i     ; offset bits\n" % address_info.offset_bits)
+                    _write(tf, ".byte $%02x    ; count mask\n" % count_mask)
+                    _write(tf, ".byte %i     ; offset bits\n" % address_info.offset_bits)
             
-            os.write(tf, "\n")
+            _write(tf, "\n")
             
             decomp_addrs = decomp_addrs[len(file_details):]
         
@@ -900,15 +904,15 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
         
             # Ideally, we would remove the decompression code and rebuild the ROM.
             sys.stderr.write("ROM file %s contains unused decompression code.\n" % rom_file)
-            os.write(tf, ".alias after_triggers 0\n")
-            os.write(tf, "triggers:\n")
-            os.write(tf, "src_addresses:\n")
-            os.write(tf, "dest_addresses:\n")
-            os.write(tf, "dest_end_addresses:\n")
-            os.write(tf, "offset_bits_and_count_masks:\n")
+            _write(tf, ".alias after_triggers 0\n")
+            _write(tf, "triggers:\n")
+            _write(tf, "src_addresses:\n")
+            _write(tf, "dest_addresses:\n")
+            _write(tf, "dest_end_addresses:\n")
+            _write(tf, "offset_bits_and_count_masks:\n")
         
         os.close(tf)
-        if os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file)) != 0:
+        if os.system("ophis -o " + shlex.quote(rom_file) + " " + shlex.quote(temp_file)) != 0:
             sys.exit(1)
         
         os.remove(temp_file)
@@ -916,25 +920,25 @@ def convert_chunks(u, indices, decomp_addrs, data_addresses, headers, details,
 
 def write_end_marker(tf):
 
-    os.write(tf, "end_of_romfs_marker:\n")
-    os.write(tf, ".byte $2b\n")
+    _write(tf, "end_of_romfs_marker:\n")
+    _write(tf, ".byte $2b\n")
 
 def get_data_address(header_file, rom_file):
 
     tf, temp_file = tempfile.mkstemp(suffix=os.extsep+'oph')
-    os.write(tf, header_file)
+    _write(tf, header_file)
     # Include placeholder values.
-    os.write(tf, ".alias after_triggers 0\n")
-    #os.write(tf, ".alias debug 48\n")
-    os.write(tf, "triggers:\n")
-    os.write(tf, "src_addresses:\n")
-    os.write(tf, "dest_addresses:\n")
-    os.write(tf, "dest_end_addresses:\n")
-    os.write(tf, "offset_bits_and_count_masks:\n")
-    os.write(tf, "end_of_romfs_marker:\n")
+    _write(tf, ".alias after_triggers 0\n")
+    #_write(tf, ".alias debug 48\n")
+    _write(tf, "triggers:\n")
+    _write(tf, "src_addresses:\n")
+    _write(tf, "dest_addresses:\n")
+    _write(tf, "dest_end_addresses:\n")
+    _write(tf, "offset_bits_and_count_masks:\n")
+    _write(tf, "end_of_romfs_marker:\n")
     os.close(tf)
     
-    if os.system("ophis -o " + commands.mkarg(rom_file) + " " + commands.mkarg(temp_file)):
+    if os.system("ophis -o " + shlex.quote(rom_file) + " " + shlex.quote(temp_file)):
         sys.exit(1)
     
     data_address = 0x8000 + os.stat(rom_file)[stat.ST_SIZE]
@@ -963,7 +967,7 @@ def find_option(args, label, number = 0, missing_value = None):
         return True
     
     if len(values) < number:
-        raise ArgumentError, "Not enough values for argument '%s': %s" % (label, repr(values))
+        raise ArgumentError("Not enough values for argument '%s': %s" % (label, repr(values)))
     
     if number == 1:
         values = values[0]
@@ -1278,8 +1282,8 @@ if __name__ == "__main__":
             else:
                 last_file_wrapper = "asm/last_file_check.oph"
             
-            print "Including", last_file_name, "to be called after all files have been loaded."
-            print "The", last_file_label, "subroutine will be called."
+            print("Including", last_file_name, "to be called after all files have been loaded.")
+            print("The", last_file_label, "subroutine will be called.")
             details[-1]["last file routine"] = \
                 _open(last_file_wrapper).read() % {
                     "last_file_label": last_file_label,
@@ -1428,13 +1432,13 @@ if __name__ == "__main__":
         
         # Create and write the source file.
         tf, temp_file = tempfile.mkstemp(suffix=os.extsep+'oph')
-        os.write(tf, bytev_code)
+        _write(tf, bytev_code)
         os.close(tf)
         
         # Assemble the bytev code.
         tbf, temp_bytev_file = tempfile.mkstemp(suffix=os.extsep+'bytev')
         
-        if os.system("ophis -o " + commands.mkarg(temp_bytev_file) + " " + commands.mkarg(temp_file)) != 0:
+        if os.system("ophis -o " + shlex.quote(temp_bytev_file) + " " + shlex.quote(temp_file)) != 0:
             sys.exit(1)
         
         os.remove(temp_file)
@@ -1465,8 +1469,8 @@ if __name__ == "__main__":
         details[0]["fscheck init"] = ""
         details[0]["fscheck workspace call address"] = 0
     
-    print "Workspace starts at $%04x. Ends at $%04x." % (workspace, workspace_end),
-    print (workspace_end - workspace), "bytes of workspace used."
+    print("Workspace starts at $%04x. Ends at $%04x." % (workspace, workspace_end), end=" ")
+    print((workspace_end - workspace), "bytes of workspace used.")
     
     # Calculate the starting address of the ROM data by assembling the ROM
     # template files.
@@ -1497,9 +1501,9 @@ if __name__ == "__main__":
         length = os.stat(rom_file)[stat.ST_SIZE]
         used = length % 16384
         if used != 0:
-            print "Free space in %s: %i %s." % (rom_file, 16384 - used,
-                plural_str(16384 - used, "byte", "bytes"))
+            print("Free space in %s: %i %s." % (rom_file, 16384 - used,
+                plural_str(16384 - used, "byte", "bytes")))
             data = open(rom_file, "rb").read()
-            open(rom_file, "wb").write(data + ("\xff" * (16384 - used))) 
+            open(rom_file, "wb").write(data + (b"\xff" * (16384 - used))) 
     
     sys.exit()
