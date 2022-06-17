@@ -412,7 +412,7 @@ def compress_file(uef_files, index, decomp_addr, execution_addr, details, roms,
                     print("Writing %i bytes, leaving %i to be written." % (
                         len(raw_data_written), len(encoded_raw_data)))
                     
-                    cdata = b"".join(map(chr, encoded_compressed_data))
+                    cdata = encoded_compressed_data
                     
                     compressed_block = Compressed(cdata, info,
                         len(raw_data_written), compress_offset_bits,
