@@ -54,16 +54,19 @@ def get_patched_data(line):
         span_length = int(span_length, 10)
     
     bytes_ = b""
-    for byte in data.split(","):
-        if "*" in byte:
-            byte, count = byte.split("*")
-            if count.startswith("0x"):
-                count = int(count, 16)
+    if data == "zero":
+        bytes_ = bytes(span_length)
+    else:
+        for byte in data.split(","):
+            if "*" in byte:
+                byte, count = byte.split("*")
+                if count.startswith("0x"):
+                    count = int(count, 16)
+                else:
+                    count = int(count, 10)
             else:
-                count = int(count, 10)
-        else:
-            count = 1
-        bytes_ += bytes([int(byte, 16)] * count)
+                count = 1
+            bytes_ += bytes([int(byte, 16)] * count)
     
     return position, offset, span_length, bytes_
 
