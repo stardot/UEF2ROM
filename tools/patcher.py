@@ -53,7 +53,7 @@ def get_patched_data(line):
     else:
         span_length = int(span_length, 10)
     
-    bytes = ""
+    bytes_ = b""
     for byte in data.split(","):
         if "*" in byte:
             byte, count = byte.split("*")
@@ -63,9 +63,9 @@ def get_patched_data(line):
                 count = int(count, 10)
         else:
             count = 1
-        bytes += chr(int(byte, 16)) * count
+        bytes_ += bytes([int(byte, 16)] * count)
     
-    return position, offset, span_length, bytes
+    return position, offset, span_length, bytes_
 
 
 def patch_files(u, patch_file):
@@ -91,7 +91,7 @@ def patch_files(u, patch_file):
             if line.startswith("!"):
                 position, new_info = get_updated_info(line)
             else:
-                position, offset, span_length, bytes = get_patched_data(line)
+                position, offset, span_length, bytes_ = get_patched_data(line)
         
         except ValueError:
             sys.stderr.write("Invalid syntax at line %i of patch file %s.\n" % (
@@ -111,10 +111,10 @@ def patch_files(u, patch_file):
                 info[name] = value
         else:
             # Patch the file data with the new data.
-            file_data = file_data[:offset] + bytes + file_data[offset + span_length:]
+            file_data = file_data[:offset] + bytes_ + file_data[offset + span_length:]
             
             print("%i (%s): Replacing %i bytes at 0x%x with %i bytes." % (position,
-                repr(info["name"]), span_length, offset, len(bytes)))
+                repr(info["name"]), span_length, offset, len(bytes_)))
         
         # Create UEF chunks for the modified file.
         chunks = u.create_chunks(info["name"], info["load"], info["exec"], file_data)
