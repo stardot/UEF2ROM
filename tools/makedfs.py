@@ -21,7 +21,7 @@ __version__ = "0.4"
 __license__ = "GNU General Public License (version 3 or later)"
 
 from io import StringIO
-from diskutils import Directory, DiskError, File, Utilities
+from .diskutils import Directory, DiskError, File, Utilities
 
 class Catalogue(Utilities):
 

@@ -1,7 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
-Copyright (C) 2015 David Boddie <david@boddie.org.uk>
+Copyright (C) 2022 David Boddie <david@boddie.org.uk>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -18,8 +18,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 __author__ = "David Boddie <david@boddie.org.uk>"
-__date__ = "2019-05-05"
-__version__ = "0.3"
+__date__ = "2022-06-18"
+__version__ = "0.4"
 __license__ = "GNU General Public License (version 3 or later)"
 
 import sys
@@ -31,10 +31,10 @@ if __name__ == "__main__":
     
     if "-s" in args:
         at = args.index("-s")
-        strip_prefix = args[at + 1]
+        strip_prefix = args[at + 1].encode("latin1")
         args = args[:at] + args[at + 2:]
     else:
-        strip_prefix = "$."
+        strip_prefix = b"$."
     
     if not 3 <= len(args) <= 4:
         sys.stderr.write("Usage: %s <ssd file> <uef file> [file0,...]\n" % args[0])
@@ -49,7 +49,7 @@ if __name__ == "__main__":
         ssd_file = args[1]
         uef_file = args[2]
     
-    cat = makedfs.Catalogue(open(ssd_file))
+    cat = makedfs.Catalogue(open(ssd_file, "rb"))
     if ssd_file.endswith(".dsd"):
         cat.interleaved = True
     
@@ -60,11 +60,11 @@ if __name__ == "__main__":
         for file in disk_files:
             max_length = max(max_length, len(repr(file.name)))
         
-        print repr(title)
+        print(repr(title))
         for file in disk_files:
             spacing = " " * (max_length - len(repr(file.name)))
-            print repr(file.name), spacing + "%08x %08x %x" % (
-                file.load_address, file.execution_address, file.length)
+            print(repr(file.name), spacing + "%08x %08x %x" % (
+                file.load_address, file.execution_address, file.length))
         
         sys.exit()
     
@@ -81,16 +81,17 @@ if __name__ == "__main__":
     
     files = []
     for name in names:
+        bname = name.encode("latin1")
         try:
-            file = index[name]
+            file = index[bname]
         except KeyError:
             sys.stderr.write("File '%s' not found in the disk catalogue.\n" % name)
             sys.exit(1)
         
-        if name.startswith(strip_prefix):
-            name = name.lstrip(strip_prefix)
+        if bname.startswith(strip_prefix):
+            bname = bname.lstrip(strip_prefix)
         
-        info = (name, file.load_address, file.execution_address, file.data)
+        info = (bname, file.load_address, file.execution_address, file.data)
         files.append(info)
     
     u = UEFfile.UEFfile(creator = "SSD2UEF.py " + __version__)
