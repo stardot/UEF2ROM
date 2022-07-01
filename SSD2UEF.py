@@ -69,7 +69,7 @@ if __name__ == "__main__":
         sys.exit()
     
     if len(args) == 4:
-        names = args[3].split(",")
+        names = [x.encode("latin1") for x in args[3].split(",")]
     else:
         names = []
         for file in disk_files:
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     
     files = []
     for name in names:
-        bname = name.encode("latin1")
+        bname = name
         try:
             file = index[bname]
         except KeyError:
