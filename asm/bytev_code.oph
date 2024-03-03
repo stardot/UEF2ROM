@@ -9,9 +9,8 @@
     jmp (old_bytev)
 
     no_tape:
-;    ldx #0
-;    dex
-;    clc
+%(bytev counter check)s
     rts
+%(bytev counter)s
 
 %(bytev analogue routines)s

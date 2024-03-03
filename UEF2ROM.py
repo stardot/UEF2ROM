@@ -1064,6 +1064,7 @@ if __name__ == "__main__":
     star_exec = find_option(args, "-x", 0)
     star_run = find_option(args, "-r", 0)
     tape_override = find_option(args, "-t", 0)
+    tape_counter, tape_counter_value = find_option(args, "-tc", 1)
     fscheck_override = find_option(args, "-T", 0)
     use_workspace, workspace = find_option(args, "-w", 1, 0xa00)
     custom_star_command, custom_star_details = find_option(args, "-M", 2, "")
@@ -1238,7 +1239,7 @@ if __name__ == "__main__":
         if paging_code:
             base_number_address, rom_indices = paging_info
             
-            rom_indices = map(int, rom_indices.split(":"))
+            rom_indices = list(map(int, rom_indices.split(":")))
             
             if len(rom_indices) < len(rom_files):
                 sys.stderr.write("Insufficient number of ROM indices specified.\n")
@@ -1371,6 +1372,8 @@ if __name__ == "__main__":
             "bytev": details[0]["bytev"],
             "bytev address": tape_workspace_call_address,
             "bytev tape check": "",
+            "bytev counter check": "",
+            "bytev counter": "",
             "bytev analogue check": "",
             "bytev analogue routines": ""
             }
@@ -1378,6 +1381,11 @@ if __name__ == "__main__":
         if tape_override:
             bytev_fragments["bytev tape check"] = _open("asm/bytev_tape_code.oph").read()
             workspace_end += 4
+        
+        if tape_counter:
+            bytev_fragments["bytev counter check"] = _open("asm/bytev_tape_counter.oph").read()
+            bytev_fragments["bytev counter"] = "bytev_counter: .byte %s" % tape_counter_value
+            workspace_end += 13
         
         if joystick_enabled:
             analogue_code = (
