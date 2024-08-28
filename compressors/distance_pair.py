@@ -407,10 +407,10 @@ if __name__ == "__main__":
         sys.exit(1)
     
     command = args[1]
-    in_f = open(args[2])
-    out_f = open(args[3], "w")
+    in_f = open(args[2], "rb")
+    out_f = open(args[3], "wb")
     
-    data = map(ord, in_f.read())
+    data = [x for x in in_f.read()]
     
     if command == "--compress":
     
@@ -423,7 +423,7 @@ if __name__ == "__main__":
         c = compress_file(data, offset_bits = offset_bits, window = mode)
         print("Compressed:", len(c))
         try:
-            out_f.write("".join(map(chr, c)))
+            out_f.write(bytes(c))
         except ValueError:
             hexdump(c)
             raise
@@ -441,7 +441,7 @@ if __name__ == "__main__":
             print("Data at %i compressed incorrectly." % i)
             hexdump(data[:i])
             print()
-            c, d = decompress(c, mode, stop_at = i)
+            c, d = decompress(c, offset_bits, mode, stop_at = i)
             hexdump(c[:i + 3])
     
     elif command == "--decompress":
@@ -458,11 +458,12 @@ if __name__ == "__main__":
         print("Input size:", len(data))
         
         pieces = compress_blocks(data, block_size, window = mode)
-        print("Compressed:", sum(map(lambda piece: len(piece[1]), pieces)))
+        print("Original:", sum(map(lambda piece: len(piece[1]), pieces)))
+        print("Compressed:", sum(map(lambda piece: len(piece[2]), pieces)))
         print("(%i pieces)" % len(pieces))
         
         d = decompress_blocks(pieces, window = mode)
-        out_f.write("".join(map(chr, d)))
+        out_f.write(bytes(d))
         
         if data != d:
             i = 0
