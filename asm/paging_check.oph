@@ -11,6 +11,8 @@ paging_check:
     bne paging_check_exit
 
     ; Load the base number and add the ROM index to it.
+    ; The base number should have been set by the software that knows which
+    ; bank this ROM is placed in.
     clc
     lda $%(base number address)x
     adc #%(rom index)i
