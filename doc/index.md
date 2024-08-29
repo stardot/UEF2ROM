@@ -55,19 +55,15 @@ The following command converts the `Where_E.uef` file (from
 [Where_E.zip](https://www.stairwaytohell.com/electron/uefarchive/leisure/Micropower/Where_E.zip))
 to a ROM called `Where.rom`:
 
-```
-UEF2ROM.py -m UEFs/Where_E.uef ROMs/Where.rom
-```
+    UEF2ROM.py -m UEFs/Where_E.uef ROMs/Where.rom
 
 The `-m` option tells UEF2ROM to create a minimal ROM, containing a basic RFS
 structure to hold the files. This means that the user of the Electron will need
 to select the filing system before loading the software as they would normally
 do from cassette:
 
-```
-*ROM
-CHAIN ""
-```
+    *ROM
+    CHAIN ""
 
 This type of ROM leaves as much space for data as possible. It doesn't even
 provide a help string.
@@ -78,17 +74,13 @@ If you don't want the user to have to enter too many commands to run the
 software, you can add a default star command entry point by using the `-b`
 option:
 
-```
-UEF2ROM.py -b -m UEFs/Where_E.uef ROMs/Where.rom
-```
+    UEF2ROM.py -b -m UEFs/Where_E.uef ROMs/Where.rom
 
 This option doesn't cause the ROM to auto-boot when the machine is powered on,
 or when Break is pressed. Instead, it responds to the default `MGC` command
 when the user enters it in BASIC:
 
-```
-*MGC
-```
+    *MGC
 
 This causes the RFS to be selected and the software to be run, using `CHAIN`
 to load the first program as before.
@@ -98,15 +90,11 @@ to load the first program as before.
 If the default command is unsuitable, the `-rn` option can be used with an
 alternative command name:
 
-```
-UEF2ROM.py -b -rn WHERE -m UEFs/Where_E.uef ROMs/Where.rom
-```
+    UEF2ROM.py -b -rn WHERE -m UEFs/Where_E.uef ROMs/Where.rom
 
 Now, the user can run the software from BASIC using the custom command:
 
-```
-*WHERE
-```
+    *WHERE
 
 This loads and runs the software in the same way as before.
 
@@ -121,9 +109,7 @@ command. One example of this is `Wychwood_RUN_BE.uef` (from
 We use the `-r` option to tell UEF2ROM that the first file must be run with
 `*RUN` not `CHAIN`:
 
-```
-UEF2ROM.py -b -m -r UEFs/Wychwood_RUN_BE.uef ROMs/Wychwood.rom
-```
+    UEF2ROM.py -b -m -r UEFs/Wychwood_RUN_BE.uef ROMs/Wychwood.rom
 
 This runs the game correctly when the user uses the default `MGC` command.
 
@@ -134,9 +120,7 @@ the computer is powered up or rebooted, without user interaction.
 
 The `-a` option is used to enable this behaviour for [Snapper](https://www.stairwaytohell.com/roms/Electron_Acornsoft_Snapper_Rom.zip):
 
-```
-UEF2ROM.py -a UEFs/Snapper_E.uef ROMs/Snapper.rom
-```
+    UEF2ROM.py -a UEFs/Snapper_E.uef ROMs/Snapper.rom
 
 If the ROM is present in sideways ROM or RAM, or in a standard ROM slot, the
 game will load at boot if it is in a slot with a higher priority than BASIC.
@@ -155,9 +139,7 @@ is enabled by default and is disabled with the `-m` option.
 
 Using the `-a` option to auto-boot the game, but no other options:
 
-```
-UEF2ROM.py -a UEFs/Snapper_E.uef ROMs/Snapper.rom
-```
+    UEF2ROM.py -a UEFs/Snapper_E.uef ROMs/Snapper.rom
 
 If the `-m` option is used, the loading process never gets past the loading
 screen. Using a persistent ROM pointer solves this issue.
@@ -172,9 +154,7 @@ for this is to specify a workspace address.
 In this case the `-w` option is used to specify a workspace address that will
 not clash with the files in the ROM as they are loaded:
 
-```
-UEF2ROM.py -a -w 39f UEFs/NightmareMaze-MRM_E.uef ROMs/NightmareMaze.rom
-```
+    UEF2ROM.py -a -w 39f UEFs/NightmareMaze-MRM_E.uef ROMs/NightmareMaze.rom
 
 Without this change of workspace address the game will overwrite the ROM
 pointer and the game will repeatedly restart the loading process.
@@ -188,9 +168,7 @@ loading.
 
 The `-t` option is used to add code that intercepts `*TAPE` calls:
 
-```
-UEF2ROM.py -a -w 39f -t UEFs/Stranded_E.uef ROMs/Stranded.rom
-```
+    UEF2ROM.py -a -w 39f -t UEFs/Stranded_E.uef ROMs/Stranded.rom
 
 This option is often used with the `-w` option to specify where the ROM pointer
 and `*TAPE` interception code should be stored. Another related option is `-T`
@@ -205,9 +183,7 @@ The `-f` option and its argument are used to select files by their position in
 the UEF file, starting with 0 for the first file. In this example, the second
 file in the UEF file is selected:
 
-```
-UEF2ROM.py -a -f 1 -r UEFs/Monsters_E.uef ROMs/Monsters.rom
-```
+    UEF2ROM.py -a -f 1 -r UEFs/Monsters_E.uef ROMs/Monsters.rom
 
 In this case the `-r` option is also used because the second file needs to be
 run using `*RUN` and it is now the first file in the ROM.
@@ -224,9 +200,7 @@ situations it is only practical to use two ROMs together.
 
 To generate two ROMs simply specify two ROM files:
 
-```
-UEF2ROM.py -a -m UEFs/KillerGorilla_E.uef ROMs/KillerGorilla-1.rom ROMs/KillerGorilla-2.rom
-```
+    UEF2ROM.py -a -m UEFs/KillerGorilla_E.uef ROMs/KillerGorilla-1.rom ROMs/KillerGorilla-2.rom
 
 UEF2ROM will store files in the first ROM until one fails to fit. UEF2ROM will
 then try to store the file in the second ROM and continue using that ROM until
@@ -243,9 +217,7 @@ large enough to fit the file if it is split.
 Using the `-s` option splits the file at the block level so that it can fit in
 the free space provided by both ROMs:
 
-```
-UEF2ROM.py -a -m -s UEFs/Boxer_E.uef ROMs/Boxer-1.rom ROMs/Boxer-2.rom
-```
+    UEF2ROM.py -a -m -s UEFs/Boxer_E.uef ROMs/Boxer-1.rom ROMs/Boxer-2.rom
 
 Without the `-s` option, the second file would be too large (16409 bytes) to
 fit in a single ROM.
@@ -259,9 +231,7 @@ the next step is to compress files so that they fit.
 The `-c` option and its argument are used to specify which files should be
 compressed:
 
-```
-UEF2ROM.py -a -m -c e00 UEFs/Skirmish_E.uef ROMs/Skirmish.rom
-```
+    UEF2ROM.py -a -m -c e00 UEFs/Skirmish_E.uef ROMs/Skirmish.rom
 
 In this simple case, the `-c` option enables compression for all files that are
 stored in the ROM. The argument refers to the load address for the first file
@@ -271,9 +241,7 @@ The colon character is used to separate addresses in the `-c` option's argument.
 In this case the second address is prefixed by a period because it is an
 execute address instead of a load address:
 
-```
-UEF2ROM.py -a -m -c e00:.4700 UEFs/MagicMushrooms_E.uef ROMs/MagicMushrooms.rom
-```
+    UEF2ROM.py -a -m -c e00:.4700 UEFs/MagicMushrooms_E.uef ROMs/MagicMushrooms.rom
 
 This overrides the meta-data in the UEF file for the second file, keeping its
 load address but ensuring that the code at &4700 ($4700) is run when the file
@@ -282,9 +250,7 @@ is decompressed into RAM.
 It can be useful to leave some files uncompressed. This is done by specifying
 `x` as the address in the `-c` option's argument:
 
-```
-UEF2ROM.py -a -m -r -c x:/: UEFs/LastOfTheFree_E.uef ROMs/LastOfTheFree-1.rom ROMs/LastOfTheFree-2.rom
-```
+    UEF2ROM.py -a -m -r -c x:/: UEFs/LastOfTheFree_E.uef ROMs/LastOfTheFree-1.rom ROMs/LastOfTheFree-2.rom
 
 This is useful for files that are so small that the compression algorithm is
 inefficient, or when there are unforseen problems with decompression.
@@ -304,9 +270,7 @@ checks for the current filing system.
 The `-T` option inserts code to report the cassette filing system (CFS) as the
 current filing system:
 
-```
-UEF2ROM.py -a -T -w 39f UEFs/DiamondPete_E.uef ROMs/DiamondPete-1.rom ROMs/DiamondPete-2.rom
-```
+    UEF2ROM.py -a -T -w 39f UEFs/DiamondPete_E.uef ROMs/DiamondPete-1.rom ROMs/DiamondPete-2.rom
 
 This option is often used with the `-w` option to specify where the interception
 code should be stored.
@@ -319,9 +283,7 @@ them.
 
 The `-p1` option is used to insert boot code to disable the Plus 1:
 
-```
-UEF2ROM.py -a -m -p1 UEFs/EscapeFromMoonbaseAlpha_E.uef ROMs/EscapeFromMoonbaseAlpha.rom
-```
+    UEF2ROM.py -a -m -p1 UEFs/EscapeFromMoonbaseAlpha_E.uef ROMs/EscapeFromMoonbaseAlpha.rom
 
 The code itself is executed as part of the generated `!BOOT` file and is not
 input as a series of BASIC commands.
@@ -339,9 +301,7 @@ distributed across multiple ROMs. Once a ROM has been read, it isn't revisited.
 UEF2ROM allows earlier ROMs to be revisited by allowing a set of ROMs to be
 looped. This is enabled with the `-l` option for non-minimal ROMs:
 
-```
-UEF2ROM.py -a -c :4300/: -l -s UEFs/TwelfthNight_E.uef ROMs/TwelfthNight-1.rom ROMs/TwelfthNight-2.rom
-```
+    UEF2ROM.py -a -c :4300/: -l -s UEFs/TwelfthNight_E.uef ROMs/TwelfthNight-1.rom ROMs/TwelfthNight-2.rom
 
 In this example, when the filing system reaches the end of the last file, the
 ROM pointer is reset to the first file in the first ROM so that the software
@@ -358,9 +318,7 @@ from detecting that vectors have been redirected.
 The `-w` option is used with an additional address, separated from the first
 by a colon:
 
-```
-UEF2ROM.py -a -c :/:x:4600 -s -t -w d3f:ef97 UEFs/BeachHead_E.uef ROMs/BeachHead-1.rom ROMs/BeachHead-2.rom
-```
+    UEF2ROM.py -a -c :/:x:4600 -s -t -w d3f:ef97 UEFs/BeachHead_E.uef ROMs/BeachHead-1.rom ROMs/BeachHead-2.rom
 
 This uses workspace at &D3f ($d3f) but redirects the BYTEV vector to &EF97
 ($ef97) which is a location in the OS ROM. This address will pass the vector
@@ -377,14 +335,24 @@ the instruction `JMP &D44` which is in the workspace block. The result is that
 Normal RFS ROMs require that software is written to use file names when loading
 and running files. For example:
 
-```
-CHAIN "LOADER"
-*RUN CODE
-```
+    CHAIN "LOADER"
+    *RUN CODE
 
-However, with cassette software, the file name is often unnecessary because it
-the files are stored in the order in which they need to be loaded.
+With cassette software, the file name is often unnecessary because it the files
+are stored in the order in which they need to be loaded. Programs will often
+use commands like these to run the next file on the cassette:
 
+    CHAIN ""
+    *RUN
+    */
+
+However, these commands do not work in the same way with the RFS because they
+will cause the operating system's ROM pointer to be reset.
+
+UEF2ROM generates ROMs that include a persistent ROM pointer that refers to the
+next block in the RFS data. This is used to overwrite the ROM pointer when
+bytes of data are read from the ROM, ensuring that commands like the ones above
+will always load the next file in the catalogue.
 
 ### Minimal ROMs
 
@@ -410,15 +378,72 @@ value of `PAGE` to the address specified.
 Customises the name of the boot file when the `-a` or `-b` options are used to
 the file name specified.
 
-### `-c`
+### `-c <address list>`
 
+Indicates that files should be compressed, and is used to supply information
+about the addresses in RAM where they should be decompressed. The address list
+is a colon-separated list of load addresses.
 
+**Example:** `-c e00:2500` decompresses the first file at &E00 ($e00) and
+the second file at &2500 ($2500).
 
-### `-C`
+Adjacent colons indicate entries that use the default load address for the
+corresponding file, obtained from the meta-data in the UEF file. Similarly,
+a leading colon indicates that the first file should be decompressed to its
+default load address, and a trailing colon indicates that all following files
+should be decompressed to their default load addresses.
+
+**Example:** `-c :2500:` decompresses the second file at &2500 ($2500) but the
+first, third and any following files at their default load addresses.
+
+For multiple ROMs, slashes are used to indicate when a new ROM should be used.
+
+**Example:** `-c e00:e00:2f00/` starts a new ROM after the third file.
+
+In this example the second ROM will not contain compressed files because no
+addresses or colons were used after the slash. It is usually desirable to
+enable compression, and this can be done in a minimal way by adding a single
+colon after the slash.
+
+**Example:** `-c :/:`
+
+Additionally, the the `-cbits` option can be used to tune the compression
+algorithm by specifying the number of bits to use to store offsets.
+
+Some files are not worth compressing. These are indicated with the `x` character
+in the list.
+
+**Example:** `-c x:1100/:` leaves the first file uncompressed.
+
+In addition to specifying where each file is decompressed, its execution
+address can also be specified. This is done by appending a period and the
+execution address to its load address. Often, if the default load address is
+correct, it is omitted and only the period and execution address are given.
+
+**Example:** `-c e00:.4543` loads the first file at &E00 ($e00) and the second
+file at its default load address, but changes its execution address to &4543
+($4543).
+
+### `-C <address>`
+
+Specifies the RAM address of the workspace to use for decompression.
+This workspace is separate to that specified using the `-w` option.
+The default value is &90 ($90).
+
+**Example:** `-C 110`
 
 ### `-cbits`
 
-### `-cblk`
+Specifies the number of bits to use to store offsets within the compression
+data. The default value of 4 is reasonable for most files.
+
+### `-cblk <size>`
+
+Indicates that blocks in a file are to be compressed individually instead of
+compressing files as a whole. Blocks in this case are not the individual file
+blocks, but chunks or pieces of a size specified by the option's argument.
+
+The default block size is 512 bytes.
 
 ### `-f <files>`
 
