@@ -179,7 +179,7 @@ UEF2ROM.py -a -w 39f UEFs/NightmareMaze-MRM_E.uef ROMs/NightmareMaze.rom
 Without this change of workspace address the game will overwrite the ROM
 pointer and the game will repeatedly restart the loading process.
 
-### Disable `*TAPE`
+### Disabling `*TAPE`
 
 Some games used the trick of running the `*TAPE` command during the loading
 process to prevent users from copying them to disk, or to ensure that the
@@ -311,6 +311,42 @@ UEF2ROM.py -a -T -w 39f UEFs/DiamondPete_E.uef ROMs/DiamondPete-1.rom ROMs/Diamo
 This option is often used with the `-w` option to specify where the interception
 code should be stored.
 
+### Disabling the Plus 1
+
+Some games do not run correctly with the Plus 1 enabled. Many were released
+with notes containing commands that the user needed to input before loading
+them.
+
+The `-p1` option is used to insert boot code to disable the Plus 1:
+
+```
+UEF2ROM.py -a -m -p1 UEFs/EscapeFromMoonbaseAlpha_E.uef ROMs/EscapeFromMoonbaseAlpha.rom
+```
+
+The code itself is executed as part of the generated `!BOOT` file and is not
+input as a series of BASIC commands.
+
+### Looping ROMs
+
+Some software is designed as a series of programs that run each other, such as
+a suite of applications or a menu with a series of games. When used from
+cassette, the user would rewind to the beginning of the cassette when reloading
+a menu program, for example.
+
+This use case isn't well supported by RFS in the case where the files are
+distributed across multiple ROMs. Once a ROM has been read, it isn't revisited.
+
+UEF2ROM allows earlier ROMs to be revisited by allowing a set of ROMs to be
+looped. This is enabled with the `-l` option:
+
+```
+UEF2ROM.py -a -c :4300/: -l -s UEFs/TwelfthNight_E.uef ROMs/TwelfthNight-1.rom ROMs/TwelfthNight-2.rom
+```
+
+In this example, when the filing system reaches the end of the last file, the
+ROM pointer is reset to the first file in the first ROM so that the software
+can load the relevant data file.
+
 ## Features
 
 ### Persistent ROM pointer
@@ -339,19 +375,53 @@ Minimal ROMs are supported by the `asm/romfs-minimal-template.oph` file.
 Enables a star command that can be used to load the software stored in the ROM.
 The default command is `MGC` but this can be changed with the `-rn` option.
 
-### `-B`
+### `-B` <address>
+
+When using the `-a` or `-b` options, this option inserts boot code to set the
+value of `PAGE` to the address specified.
+
+**Example:** `-B 1900`
+
+### `-bf` <file name>
 
 ### `-c`
 
+### `-C`
+
+### `-cbits`
+
+### `-cblk`
+
 ### `-f`
 
+Selects files by their positions in the UEF file, starting from an index of 0.
 
-### `-rn` <command>
+**Example:** `-f 1` selects the second file.
 
-Customises the star command provided by the ROM, if `-b` is specified, to use
-the command passed as an argument to this option.
+Lists of files can be specified, with the colon character being used to
+separate indices.
 
-**Example:** `-b -rn WHERE`
+**Example:** `-f 2:4` selects the third and fifth files.
+
+Ranges of files can also be specified.
+
+**Example:** `-f 1-3` selects the second, third and fourth files.
+
+These can be mixed to select individual files and ranges of files.
+
+**Example:** `-f 1-3:5` selects the second, third, fourth and sixth files.
+
+A special value of `s` can be used to indicate the end of a ROM, so that files
+following this will be added to a new ROM. More than one ROM file must be
+specified.
+
+**Example:** `-f 2-4:s:5-6` puts the sixth and seventh files in the second ROM.
+
+### `-I`
+
+### `-l`
+
+### `-L`
 
 ### `-m`
 
@@ -359,12 +429,40 @@ Causes a minimal ROM to be generated. Minimal ROMs do not include support for
 intercepting file systems calls and other features of non-minimal ROMs, but
 this reduces their overhead, leaving more space for data.
 
+### `-M`
+
 ### `-p`
 
 When generating more than one ROM, the `-p` option is used to enable the
 persistent ROM pointer for the second ROM. This requires the first ROM to be
 a non-minimal ROM, meaning that the `-m` option cannot be used with this option.
 
+### `-P`
+
+### `-pf` <patch file name>
+
+### `-r`
+
+When `-a` or `-b` are used, this specifies that the first file should be loaded
+and run using a `*RUN` command.
+
+### `-rn` <name>
+
+Customises the star command provided by the ROM, if `-b` is specified, to use
+the name passed as an argument to this option.
+
+**Example:** `-b -rn WHERE`
+
+### `-rt` <title>
+
+### `-s`
+
 ### `-t`
 
+### `-tc`
+
 ### `-T`
+
+### `-w`
+
+### `-x`
