@@ -36,7 +36,7 @@ UEF2ROM is not very well designed. It grew from a simple proof of concept,
 accumulating new features as problems or issues were encountered with UEF files
 and their contents. Please bear this in mind when using the tool, but
 especially if you need to modify the code. It started as something conceptually
-simple, but it evolved into something less manageable.
+simple and evolved into something less manageable.
 
 ## Examples
 
@@ -337,7 +337,7 @@ This use case isn't well supported by RFS in the case where the files are
 distributed across multiple ROMs. Once a ROM has been read, it isn't revisited.
 
 UEF2ROM allows earlier ROMs to be revisited by allowing a set of ROMs to be
-looped. This is enabled with the `-l` option:
+looped. This is enabled with the `-l` option for non-minimal ROMs:
 
 ```
 UEF2ROM.py -a -c :4300/: -l -s UEFs/TwelfthNight_E.uef ROMs/TwelfthNight-1.rom ROMs/TwelfthNight-2.rom
@@ -346,6 +346,29 @@ UEF2ROM.py -a -c :4300/: -l -s UEFs/TwelfthNight_E.uef ROMs/TwelfthNight-1.rom R
 In this example, when the filing system reaches the end of the last file, the
 ROM pointer is reset to the first file in the first ROM so that the software
 can load the relevant data file.
+
+### Workspace indirection
+
+Some games would check for indirection of vectors to prevent the user from
+redirecting `*TAPE` and intercepting other system calls. This is a problem
+when using the `-t` option to disable the `*TAPE` command. However, if the
+checks are simple enough then a workaround can be used to prevent the game
+from detecting that vectors have been redirected.
+
+The `-w` option is used with an additional address, separated from the first
+by a colon:
+
+```
+UEF2ROM.py -a -c :/:x:4600 -s -t -w d3f:ef97 UEFs/BeachHead_E.uef ROMs/BeachHead-1.rom ROMs/BeachHead-2.rom
+```
+
+This uses workspace at &D3f ($d3f) but redirects the BYTEV vector to &EF97
+($ef97) which is a location in the OS ROM. This address will pass the vector
+table checks in some games because they are only looking for addresses in RAM.
+Redirecting BYTEV to an arbitrary address in ROM may seem like a bad idea but
+the contents of this address is a sequence of three bytes that correspond to
+the instruction `JMP &D44` which is in the workspace block. The result is that
+`*TAPE` calls are still intercepted, but are not detected by these games.
 
 ## Features
 
@@ -375,16 +398,21 @@ Minimal ROMs are supported by the `asm/romfs-minimal-template.oph` file.
 Enables a star command that can be used to load the software stored in the ROM.
 The default command is `MGC` but this can be changed with the `-rn` option.
 
-### `-B` <address>
+### `-B <address>`
 
 When using the `-a` or `-b` options, this option inserts boot code to set the
 value of `PAGE` to the address specified.
 
 **Example:** `-B 1900`
 
-### `-bf` <file name>
+### `-bf <file name>`
+
+Customises the name of the boot file when the `-a` or `-b` options are used to
+the file name specified.
 
 ### `-c`
+
+
 
 ### `-C`
 
@@ -392,7 +420,7 @@ value of `PAGE` to the address specified.
 
 ### `-cblk`
 
-### `-f`
+### `-f <files>`
 
 Selects files by their positions in the UEF file, starting from an index of 0.
 
@@ -417,11 +445,24 @@ specified.
 
 **Example:** `-f 2-4:s:5-6` puts the sixth and seventh files in the second ROM.
 
-### `-I`
+### `-I <oph file> <label>`
+
+Similar to the `-M` option except that the custom code is not tied to a star
+command and will be run before any other initialisation code that is inserted
+into the ROM by other options.
 
 ### `-l`
 
-### `-L`
+Allows the persistent ROM pointer to loop back to the first ROM in a set of
+multiple ROMs. Cannot be used with minimal ROMs.
+
+### `-L <oph file> <label>`
+
+Allows a custom piece of code to be run after the last file has been read,
+accepting the name of the Ophis file to assemble and the name of the label in
+the file that is the start of the subroutine to call.
+
+**Example:** `-L postload/southern_belle.oph postload`
 
 ### `-m`
 
@@ -429,7 +470,11 @@ Causes a minimal ROM to be generated. Minimal ROMs do not include support for
 intercepting file systems calls and other features of non-minimal ROMs, but
 this reduces their overhead, leaving more space for data.
 
-### `-M`
+### `-M <oph file> <label>`
+
+Allows a custom piece of code to be used to respond to the star command that is
+used when the `-b` option is specified, and which can be customised with the
+`-rn` option.
 
 ### `-p`
 
@@ -437,14 +482,68 @@ When generating more than one ROM, the `-p` option is used to enable the
 persistent ROM pointer for the second ROM. This requires the first ROM to be
 a non-minimal ROM, meaning that the `-m` option cannot be used with this option.
 
-### `-P`
+### `-P <address> <ROM indices>`
 
-### `-pf` <patch file name>
+Includes code that writes to a paging register to switch between ROMs when the
+end of RFS data is reached. This enables more than two ROMs to be used together,
+but requires that some hardware implements a paging register at &FC00 ($fc00)
+and records a bank number at &290 ($290). This is designed for use with the
+Mega Games Cartridge (MGC).
+
+The address specifies where in RAM the bank number is stored for the current
+ROM. When paging occurs, this address is used to find the base number for a
+set of ROMs. The number for the next bank is added to the base number and
+the result is written to the paging register.
+
+The ROM indices indicate the order of ROMs in a set as a colon-separated list
+of decimal integers. For each ROM, the entry in the list gives the index of the
+next ROM in the set to page in.
+
+**Example:** `-P 290 1:2:3:1`
+
+In this example, the first ROM (0) will be paged in initially, then the second
+(1), third (2) and fourth (3) ROMs will be paged in when the end of the files
+in the previous ROMs are encountered. Finally, after the fourth ROM has been
+read, the second (1) ROM is paged in.
+
+### `-pf <patch file name>`
+
+Specifies a patch file that is used to apply patches to the files in the UEF
+file before they are stored in ROM.
+
+The patch file contains a sequence of lines. Blank lines or those beginning
+with a `#` character are ignored. Each line describes either a patch to a
+particular file or a change to a file's meta-data.
+
+A patch is a line containing four whitespace-separated fields. The first field
+is the index of the file in the UEF file, starting at 0. The second field is
+the offset from the start of the file. The third field describes the length of
+a span of data to replace. The fourth field contains the data to replace the
+span of data expressed as a comma-separated sequence of hexadecimal values.
+
+**Example:** `0 0x3d7 16 1c,0e,0f,18,0b,0c,0c,87,8d,41,76,69,61,74,6f,72`
+
+This example selects the first file in the UEF file, patching data at offset
+0x3d7, replacing a span of data 16 bytes in length with a sequence of bytes of
+the same length.
+
+If the length of the replacement data is smaller than that of the original data,
+the file decreases in size. If the replacement data is larger, the file
+increases in size.
+
+Changes to meta-data are indicated by a line that begins with a `!` character.
+The second field on the line is the index of the file to modify. Each subsequent
+field describes a modification to the file's meta-data.
+
+**Example:** `! 2 load=0xd00`
+
+In this case, the `load` attribute is changed. The only other valid attribute
+is `exec`.
 
 ### `-r`
 
-When `-a` or `-b` are used, this specifies that the first file should be loaded
-and run using a `*RUN` command.
+When the `-a` or `-b` options are used, this specifies that the first file
+should be loaded and run using a `*RUN` command.
 
 ### `-rn` <name>
 
@@ -453,16 +552,61 @@ the name passed as an argument to this option.
 
 **Example:** `-b -rn WHERE`
 
-### `-rt` <title>
+### `-rt <title>`
+
+Allows the ROM title to be customised from the default, "MGC". This is only
+usually visible in lists of ROMs produced by various utilities.
 
 ### `-s`
 
+When using multiple ROMs, specifies that files can be split at the block level
+across ROM boundaries instead of requiring files to be kept whole and stored
+only on a single ROM.
+
+This is useful when individual files are larger than 16K in size, but it is
+also a good way to ensure that ROM space is used efficiently.
+
 ### `-t`
 
-### `-tc`
+Includes code for disabling `*TAPE` calls.
+
+This can only be used with non-minimal ROMs and uses additional workspace.
+The `-w` option can be used to customise the address used for the workspace.
+
+### `-tc <value>`
+
+Adds support for a tape counter check that restores the original address for the
+BYTEV vector when the value reaches zero. The idea for this was to trick
+software into loading from ROM but then restore its ability to select the
+cassette filing system after it has loaded.
 
 ### `-T`
 
-### `-w`
+Includes code for disabling file system checks.
+
+This can only be used with non-minimal ROMs and uses additional workspace.
+The `-w` option can be used to customise the address used for the workspace.
+
+### `-w <address>[:<fsbyte address>]`
+
+Specifies the address of the workspace in RAM used by ROMs created with UEF2ROM.
+The default address for the workspace is &A00 ($a00).
+
+**Example:** `-w 39f`
+
+Minimal ROMs with no additional features do not use any workspace. Non-minimal
+ROMs require at least two bytes for the persistent ROM pointer. Features like
+`*TAPE` suppression increase the size of the workspace.
+
+UEF2ROM will print the amount of workspace that a ROM needs to the console when
+creating it.
+
+An second address can also be specified after a colon character. This specifies
+a replacement address for the BYTEV vector to be used instead of the address at
+the end of the workspace. This is used in cases where it is necessary to trick
+software that checks addresses in the vector table.
 
 ### `-x`
+
+When the `-a` or `-b` options are used, this specifies that the first file
+should be loaded and run using a `*EXEC` command.
