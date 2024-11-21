@@ -151,8 +151,9 @@ The persistent ROM pointer is stored in RAM, with a default address of &A00
 loaded from ROM or workspace used by the programs as they load. The workaround
 for this is to specify a workspace address.
 
-In this case the `-w` option is used to specify a workspace address that will
-not clash with the files in the ROM as they are loaded:
+In this case the `-w` option is used to specify a workspace address for
+[Nightmare Maze](http://www.stairwaytohell.com/electron/uefarchive/MRM/NightmareMaze-MRM_E.zip)
+that will not clash with the files in the ROM as they are loaded:
 
     UEF2ROM.py -a -w 39f UEFs/NightmareMaze-MRM_E.uef ROMs/NightmareMaze.rom
 
@@ -166,7 +167,8 @@ process to prevent users from copying them to disk, or to ensure that the
 value of `PAGE` was set to a low value. This prevents games stored in RFS from
 loading.
 
-The `-t` option is used to add code that intercepts `*TAPE` calls:
+The `-t` option is used to add code that intercepts `*TAPE` calls, as used by
+[Stranded](http://www.stairwaytohell.com/electron/uefarchive/Superior/Stranded_E.zip):
 
     UEF2ROM.py -a -w 39f -t UEFs/Stranded_E.uef ROMs/Stranded.rom
 
@@ -181,7 +183,8 @@ files when transferring them to ROM.
 
 The `-f` option and its argument are used to select files by their position in
 the UEF file, starting with 0 for the first file. In this example, the second
-file in the UEF file is selected:
+file in the [Monsters](http://www.stairwaytohell.com/electron/uefarchive/Acornsoft/Monsters_E.zip)
+UEF file is selected:
 
     UEF2ROM.py -a -f 1 -r UEFs/Monsters_E.uef ROMs/Monsters.rom
 
@@ -198,7 +201,8 @@ When there are too many files to fit into one ROM, multiple ROMs can be
 specified. Although some hardware supports the use of multiple ROMs, in most
 situations it is only practical to use two ROMs together.
 
-To generate two ROMs simply specify two ROM files:
+To generate two ROMs simply specify two ROM files, as needed by
+[Killer Gorilla](http://www.stairwaytohell.com/electron/uefarchive/Micropower/KillerGorilla_E.zip):
 
     UEF2ROM.py -a -m UEFs/KillerGorilla_E.uef ROMs/KillerGorilla-1.rom ROMs/KillerGorilla-2.rom
 
@@ -219,8 +223,8 @@ the free space provided by both ROMs:
 
     UEF2ROM.py -a -m -s UEFs/Boxer_E.uef ROMs/Boxer-1.rom ROMs/Boxer-2.rom
 
-Without the `-s` option, the second file would be too large (16409 bytes) to
-fit in a single ROM.
+Without the `-s` option, the second file in the [Boxer](http://www.stairwaytohell.com/electron/uefarchive/Acornsoft/Boxer_E.zip)
+UEF would be too large (16409 bytes) to fit in a single ROM.
 
 ### Compressing files
 
@@ -233,9 +237,10 @@ compressed:
 
     UEF2ROM.py -a -m -c e00 UEFs/Skirmish_E.uef ROMs/Skirmish.rom
 
-In this simple case, the `-c` option enables compression for all files that are
-stored in the ROM. The argument refers to the load address for the first file
-in the UEF, overriding the load address meta-data in the UEF.
+In this simple conversion of [Skirmish](http://www.stairwaytohell.com/electron/uefarchive/Godax/Skirmish_E.zip),
+the `-c` option enables compression for all files that are stored in the ROM.
+The argument refers to the load address for the first file in the UEF,
+overriding the load address meta-data in the UEF.
 
 The colon character is used to separate addresses in the `-c` option's argument.
 In this case the second address is prefixed by a period because it is an
@@ -243,12 +248,14 @@ execute address instead of a load address:
 
     UEF2ROM.py -a -m -c e00:.4700 UEFs/MagicMushrooms_E.uef ROMs/MagicMushrooms.rom
 
-This overrides the meta-data in the UEF file for the second file, keeping its
-load address but ensuring that the code at &4700 ($4700) is run when the file
-is decompressed into RAM.
+This overrides the meta-data in the UEF file for the second file in the
+[Magic Mushrooms](http://www.stairwaytohell.com/electron/uefarchive/Acornsoft/MagicMushrooms_E.zip)
+UEF, keeping its load address but ensuring that the code at &4700 ($4700) is
+run when the file is decompressed into RAM.
 
 It can be useful to leave some files uncompressed. This is done by specifying
-`x` as the address in the `-c` option's argument:
+`x` as the address in the `-c` option's argument, as in this conversion of
+[Last Of The Free](http://www.stairwaytohell.com/electron/uefarchive/Audiogenic/LastOfTheFree_E.zip):
 
     UEF2ROM.py -a -m -r -c x:/: UEFs/LastOfTheFree_E.uef ROMs/LastOfTheFree-1.rom ROMs/LastOfTheFree-2.rom
 
@@ -268,7 +275,8 @@ Some games tried to prevent users from overriding the `*TAPE` command by using
 checks for the current filing system.
 
 The `-T` option inserts code to report the cassette filing system (CFS) as the
-current filing system:
+current filing system to circumvent copy protection or loading checks, such as
+in the case of [Diamond Pete](http://www.stairwaytohell.com/electron/uefarchive/Alligata/DiamondPete_E.zip):
 
     UEF2ROM.py -a -T -w 39f UEFs/DiamondPete_E.uef ROMs/DiamondPete-1.rom ROMs/DiamondPete-2.rom
 
@@ -281,7 +289,8 @@ Some games do not run correctly with the Plus 1 enabled. Many were released
 with notes containing commands that the user needed to input before loading
 them.
 
-The `-p1` option is used to insert boot code to disable the Plus 1:
+The `-p1` option is used to insert boot code to disable the Plus 1, which can
+be useful for games like [Escape From Moonbase Alpha](http://www.stairwaytohell.com/electron/uefarchive/Micropower/EscapeFromMoonbaseAlpha_E.zip):
 
     UEF2ROM.py -a -m -p1 UEFs/EscapeFromMoonbaseAlpha_E.uef ROMs/EscapeFromMoonbaseAlpha.rom
 
@@ -305,7 +314,7 @@ looped. This is enabled with the `-l` option for non-minimal ROMs:
 
 In this example, when the filing system reaches the end of the last file, the
 ROM pointer is reset to the first file in the first ROM so that the software
-can load the relevant data file.
+can load the relevant data file for [Twelfth Night](http://www.stairwaytohell.com/electron/uefarchive/educ/Penguin/TwelfthNight_E.zip).
 
 ### Workspace indirection
 
@@ -320,7 +329,8 @@ by a colon:
 
     UEF2ROM.py -a -c :/:x:4600 -s -t -w d3f:ef97 UEFs/BeachHead_E.uef ROMs/BeachHead-1.rom ROMs/BeachHead-2.rom
 
-This uses workspace at &D3f ($d3f) but redirects the BYTEV vector to &EF97
+This example of a conversion of [Beach Head](http://www.stairwaytohell.com/electron/uefarchive/USGold/BeachHead_E.zip)
+uses workspace at &D3f ($d3f) but redirects the BYTEV vector to &EF97
 ($ef97) which is a location in the OS ROM. This address will pass the vector
 table checks in some games because they are only looking for addresses in RAM.
 Redirecting BYTEV to an arbitrary address in ROM may seem like a bad idea but
@@ -329,6 +339,9 @@ the instruction `JMP &D44` which is in the workspace block. The result is that
 `*TAPE` calls are still intercepted, but are not detected by these games.
 
 ## Features
+
+This section contains brief descriptions and explanations of some key features
+of UEF2ROM.
 
 ### Persistent ROM pointer
 
